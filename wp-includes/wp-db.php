@@ -2397,7 +2397,10 @@ class wpdb {
 		$table_parts = explode( '.', $table );
 		$table = '`' . implode( '`.`', $table_parts ) . '`';
 		$table = str_replace( '`', "'", $table );
-		$results = $this->get_results( "SHOW FULL COLUMNS FROM $table" );
+		$sql = "SHOW FULL COLUMNS FROM $table";
+		$sql = str_replace( 'SHOW FULL COLUMNS FROM ', 'SELECT column_name FROM information_schema.columns WHERE table_name = ', $sql);
+		$sql = str_replace( '`', "'", $sql );
+		$results = $this->get_results( $sql);
 
 		if ( ! $results ) {
 			return new WP_Error( 'wpdb_get_table_charset_failure' );
