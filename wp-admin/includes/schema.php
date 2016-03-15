@@ -597,6 +597,7 @@ function populate_options() {
 		AND a.option_name NOT LIKE %s
 		AND b.option_name = CONCAT( '_transient_timeout_', SUBSTRING( a.option_name, 12 ) )
 		AND b.option_value < %d";
+	$sql = str_replace( '`', "'", $sql );
 	$wpdb->query( $wpdb->prepare( $sql, $wpdb->esc_like( '_transient_' ) . '%', $wpdb->esc_like( '_transient_timeout_' ) . '%', $time ) );
 
 	if ( is_main_site() && is_main_network() ) {
@@ -605,6 +606,7 @@ function populate_options() {
 			AND a.option_name NOT LIKE %s
 			AND b.option_name = CONCAT( '_site_transient_timeout_', SUBSTRING( a.option_name, 17 ) )
 			AND b.option_value < %d";
+		$sql = str_replace( '`', "'", $sql );
 		$wpdb->query( $wpdb->prepare( $sql, $wpdb->esc_like( '_site_transient_' ) . '%', $wpdb->esc_like( '_site_transient_timeout_' ) . '%', $time ) );
 	}
 }

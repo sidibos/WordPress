@@ -1653,6 +1653,7 @@ function upgrade_network() {
 			AND a.meta_key NOT LIKE %s
 			AND b.meta_key = CONCAT( '_site_transient_timeout_', SUBSTRING( a.meta_key, 17 ) )
 			AND b.meta_value < %d";
+		$sql = str_replace( '`', "'", $sql );
 		$wpdb->query( $wpdb->prepare( $sql, $wpdb->esc_like( '_site_transient_' ) . '%', $wpdb->esc_like ( '_site_transient_timeout_' ) . '%', $time ) );
 	}
 
