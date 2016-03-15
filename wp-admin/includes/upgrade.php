@@ -1904,7 +1904,7 @@ function maybe_add_column($table_name, $column_name, $create_ddl) {
 function maybe_convert_table_to_utf8mb4( $table ) {
 	global $wpdb;
 
-	$results = $wpdb->get_results( "SHOW FULL COLUMNS FROM `$table`" );
+	$results = $wpdb->get_results( "SHOW FULL COLUMNS FROM '$table''" );
 	if ( ! $results ) {
 		return false;
 	}

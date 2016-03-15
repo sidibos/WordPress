@@ -2396,7 +2396,9 @@ class wpdb {
 
 		$table_parts = explode( '.', $table );
 		$table = '`' . implode( '`.`', $table_parts ) . '`';
+		$table = str_replace( '`', "'", $table );
 		$results = $this->get_results( "SHOW FULL COLUMNS FROM $table" );
+
 		if ( ! $results ) {
 			return new WP_Error( 'wpdb_get_table_charset_failure' );
 		}
