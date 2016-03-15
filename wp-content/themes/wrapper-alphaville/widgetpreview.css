@@ -1,0 +1,104 @@
+/*
+Theme Name: Wrapper-Alphaville
+This stylesheet is used by various Assanka widgets that require an HTML preview.
+Because wordpress lets Admins enter content as HTML, we need to accommodate all HTML elements.
+*/
+
+@import url("http://s1.media.ft.com/m/style/N1753260761/bundles/user.css");
+
+/* =Fonts
+-------------------------------------------------------------- */
+body{ font-family:Arial, Helvetica, sans-serif; }
+
+/* =Basic HTML element resets
+-------------------------------------------------------------- */
+body{ font-size:12px }
+code,kbd,samp,pre,tt,var,input,select,isindex,listing,xmp,plaintext{ font:inherit; white-space:normal; }
+textarea{ font:inherit; }
+a,img,a img,iframe,form,abbr,acronym,object,applet,table,a abbr,a acronym{ border-width:0; }
+th,strong,h1,h2,h3,h4,h5,h6,dt{ font-weight:400; }
+caption,th,td{ text-align:left; }
+
+/* =Deprecated HTML elements
+-------------------------------------------------------------- */
+font,basefont{ color:inherit; font:inherit; font-size:100%; }
+center,[align]{ text-align:inherit; }
+s,strike,u{ text-decoration:inherit; }
+img{ border:none; }
+ol{ list-style-type:decimal; }
+tr,th,td{ width:auto; height:auto; background-color:transparent; vertical-align:inherit; border:none; }
+table[border]{ border-collapse:separate; border-spacing:0; }
+nobr{ white-space:normal; }
+marquee{ overflow:visible; -moz-binding:none; }
+blink{ text-decoration:none; }
+
+/* =HTML elements
+-------------------------------------------------------------- */
+a{ text-decoration:underline; }
+strong,th,thead td,h1,h2,h3,h4,h5,h6,dt{ font-weight:700; }
+cite,em,dfn{ font-style:italic; }
+code,kbd,samp,pre,tt,var,input[type=text],input[type=password],textarea{ font-size:100%; font-family:mono-space,monospace; }
+pre{ white-space:pre; }
+pre *{ font-size:100%; white-space:pre; }
+del{ text-decoration:line-through; }
+ins,dfn{ border-bottom:1px solid #000; }
+small,sup,sub{ font-size:85%; }
+big{ font-size:125%; line-height:80%; }
+abbr,acronym{ text-transform:uppercase; font-size:85%; letter-spacing:.1em; }
+abbr[title],acronym[title],dfn[title]{ cursor:help; border-bottom:1px dotted #000; }
+sup{ vertical-align:super; }
+sub{ vertical-align:sub; }
+blockquote{ padding-left:2.2em; }
+input,select,button{ cursor:pointer; }
+input[type=text],input[type=password]{ cursor:text; }
+input[type=hidden]{ display:none; }
+h1{ line-height:1; font-weight:400; margin-bottom:0.4em; font-size:2em; }
+h2{ line-height:1; font-weight:400; margin-bottom:0.4em; font-size:1.563em; }
+h3{ line-height:1; font-weight:400; margin-bottom:0.4em; font-size:1.4em; }
+h4{ line-height:1; font-weight:400; margin-bottom:0.4em; font-size:1.3em; }
+h5{ line-height:1; font-weight:400; margin-bottom:0.4em; font-size:1.2em; }
+h6{ line-height:1; font-weight:400; margin-bottom:0.4em; font-size:1em; }
+table{ border-collapse:collapse; width:100%; }
+hr{ display:block; background:black; color:black; width:100%; height:1px; border:none; }
+hr,p,ul,ol,dl,pre, address,table,form{ margin-bottom:1.6em; }
+fieldset>:first-child{ margin-top:0; }
+textarea,input[type='text']{ display:block; padding:.1em .2em; }
+input{ padding:.2em .1em; }
+select{ padding:.2em .1em 0; }
+select[multiple]{ margin-bottom:.8em; }
+option{ padding:0 .4em .1em; }
+button{ padding:.3em .5em; }
+input[type='radio']{ position:relative; bottom:-.2em; }
+dt{ margin-top:.8em; margin-bottom:.4em; }
+caption, form div{ padding-bottom:.8em; }
+ul ul, ol ul, ul ol, ol ol{ margin-bottom:0; }
+p{ font-size:1em; margin: 1em 0; }
+hr { display: block; background: #E9DECF; color: #E9DECF; width: 100%; height: 1px; border: none; }
+ul{ list-style:disc outside; }
+ol{ list-style:decimal outside; }
+p+p{ margin-top:-.8em; }
+
+/* =Content basics
+-------------------------------------------------------------- */
+div#wrapper{ padding:4px; }
+
+/* HTML Widget - Author list */
+.author-list img { max-width: 55px; max-height: 70px; float: left; margin-right: 16px; }
+
+/* WSOD widget */
+div.assanka_wsodwidget table{border-collapse:collapse; margin-bottom:0; width:100%; border-spacing:2px; text-indent:0; line-height:normal; }
+div.assanka_wsodwidget table thead{display:table-header-group; }
+div.assanka_wsodwidget table tbody{display:table-row-group; }
+div.assanka_wsodwidget span, div.assanka_wsodwidget a, div.assanka_wsodwidget table, div.assanka_wsodwidget tbody, div.assanka_wsodwidget thead, div.assanka_wsodwidget tr, div.assanka_wsodwidget th, div.assanka_wsodwidget td{border:0 none; font-family:arial; font-size:100%; font-style:inherit; font-weight:inherit; margin:0; padding:0; vertical-align:baseline; }
+div.assanka_wsodwidget tr{display:table-row; }
+div.assanka_wsodwidget th.text, div.assanka_wsodwidget td.text{text-align:left; }
+div.assanka_wsodwidget th, div.assanka_wsodwidget td{border-bottom:1px solid #E7E2DB; text-align:right; }
+div.assanka_wsodwidget table th{color:#666; font-size:11px; font-weight:700; padding:3px 4px; vertical-align:bottom; white-space:nowrap; display:table-cell; }
+div.assanka_wsodwidget table td{font-size:12px; padding:6px 4px; vertical-align:middle; font-weight:400; }
+div.assanka_wsodwidget table td.lastPrice, div.assanka_wsodwidget table td.todayChange, div.assanka_wsodwidget table td.yearChange{white-space:nowrap; }
+div.assanka_wsodwidget td.text span.detail{color:#666; font-size:11px; font-weight:700; }
+div.assanka_wsodwidget td.text span.disclaimer{display:block; float:none; white-space:nowrap; font-size:10px; color:#666; }
+div.assanka_wsodwidget span.disclaimer span.datavalue{font-weight:400; }
+div.assanka_wsodwidget .posChange{color:#458B00; }
+div.assanka_wsodwidget .negChange{color:#C00; }
+div.assanka_wsodwidget tr.wsoderror{display:none; }

@@ -1,0 +1,50 @@
+/* styleie.css */
+.primary-container {
+    margin-top: 1px;
+}
+.msie #ft-search {
+    width: 392px;
+    margin-right: -8px;
+}
+.msie #ft-search button {
+    float: none;
+    display: inline-block;
+    margin-top: 0;
+}
+.msie #ft-search select {
+    float: none;
+    display: inline-block;
+    margin-bottom: 6px;
+}
+.msie #ft-search .searchContainer {
+    float: none;
+    display: inline-block;
+    padding: 0;
+    margin: 0 5px 0 0;
+    height: auto;
+    float: left;
+}
+.sharelinks-container {
+    display: inline;
+}
+
+
+/* =IE 6
+-------------------------------------------------------------- */
+.msie6 #ft-search {
+    width: 385px;
+}
+.msie6 #ft-search button.standardImage {
+    text-align: right;
+}
+.msie6 #primary-navigation ul.sub-menu li,
+.msie6 #primary-navigation ul.sub-menu li a {
+    display: inline;
+}
+.msie6 .entry-header .linkButton {
+    display: none;
+}
+.msie6 .primary-content .inner {
+    margin-right: 342px;
+    padding-right: 15px;
+}
