@@ -1,0 +1,31 @@
+body { background: none; }
+
+.primary-container { margin-top: 0; }
+
+.primary-content { width: 100%; }
+
+#header { border-bottom: 1px solid #E9DECF; padding-bottom: 25px; }
+
+#page-title .bc,
+#page-title .pagename { display: block !important; }
+
+embed,
+object,
+#cookie-consent-container,
+.topAds, 
+#primary-navigation, 
+#primary-navigation-tools, 
+#header .colright, 
+.secondary-content, 
+a.more-link, 
+.meta-divider,
+.linkButton,
+.backnforth, 
+#footer .gen-freestyle-ul,
+.social-counter, 
+.post-actions,
+.backtotop {
+	display: none !important; 
+}
+
+

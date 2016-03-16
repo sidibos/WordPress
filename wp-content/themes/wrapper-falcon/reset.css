@@ -1,0 +1,39 @@
+/* =Basic HTML element resets
+-------------------------------------------------------------- */
+code,kbd,samp,pre,tt,var,input,select,isindex,listing,xmp,plaintext { white-space: normal; }
+textarea { font: inherit; }
+a,img,a img,iframe,form,abbr,acronym,object,applet,table,a abbr,a acronym { border-width: 0; }
+th,h1,h2,h3,h4,h5,h6,dt { font-weight: 400; }
+caption,th,td { text-align: left; }
+
+/* =Deprecated HTML elements
+-------------------------------------------------------------- */
+font,basefont { color: inherit; font: inherit; font-size: 100%; }
+center,[align] { text-align: inherit; }
+s,strike,u { text-decoration: inherit; }
+img { border: none; }
+tr,th,td { width: auto; height: auto; background-color: transparent; vertical-align: inherit; border: none; }
+table[border] { border-collapse: separate; border-spacing: 0; }
+nobr { white-space: normal; }
+marquee { overflow: visible; -moz-binding: none; }
+blink { text-decoration: none; }
+
+/* =HTML elements
+-------------------------------------------------------------- */
+a { text-decoration: underline; }
+strong,th,thead td,h1,h2,h3,h4,h5,h6,dt { font-weight: 700; }
+cite,em,dfn { font-style: italic; }
+pre { white-space: pre; }
+pre * { font-size: 100%; white-space: pre; }
+del { text-decoration: line-through; }
+ins,dfn { border-bottom: 1px solid #000; }
+small,sup,sub { font-size: 85%; }
+big { font-size: 125%; line-height: 80%; }
+abbr,acronym { text-transform: uppercase; font-size: 85%; letter-spacing: .1em; }
+abbr[title],acronym[title],dfn[title] { cursor: help; border-bottom: 1px dotted #000; }
+sup { vertical-align: super; }
+sub { vertical-align: sub; }
+blockquote { padding: 1.7em 1.5em 1px; margin: 0 24px 1.8em 24px; }
+input,select,button { cursor: pointer; }
+input[type=text],input[type=password] { cursor: text; }
+input[type=hidden] { display: none; }

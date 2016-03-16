@@ -1,0 +1,11 @@
+/*
+Theme Name: Falcon
+Theme URI: http: //ft.com/
+Description: WP Admin styles for the standard FT theme.
+Author: Assanka
+Version: 1.1
+Author URI: http: //assanka.net/
+*/
+
+/* Hiding "Quick Edit" button */
+div.row-actions span.inline{ display: none; }
