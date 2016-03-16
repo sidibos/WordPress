@@ -1,0 +1,405 @@
+/*
+Theme Name: Falcon
+Theme URI: http://ft.com/
+Description: The standard FT theme. This version is based on the "Twenty Ten" theme for WordPress.
+Author: Assanka
+Version: 1.1
+Author URI: http: //assanka.net/
+Tags: assanka, two-columns, fixed-width, sticky-post, translation-ready, microformats, rtl-language-support, editor-style
+
+README
+This theme links to FT.com's live CSS bundle:
+http://s1.media.ft.com/m/style/N1753260761/bundles/user.css
+
+The styles in this sheet are only supposed to supplement FT's user.css styles.
+However, because wordpress lets Admins enter content as HTML, we need to accommodate all HTML elements.
+*/
+
+/* =Structure
+-------------------------------------------------------------- */
+#nav-below{ clear:both; }
+
+/* =Fonts
+-------------------------------------------------------------- */
+body{ font-family:Arial, Helvetica, sans-serif; }
+div.master-column div.post{ font-family:Georgia, 'Times New Roman', Times, serif; }
+
+/* =Basic HTML element resets
+-------------------------------------------------------------- */
+code,kbd,samp,pre,tt,var,input,select,isindex,listing,xmp,plaintext{ white-space:normal; }
+textarea{ font:inherit; }
+a,img,a img,iframe,form,abbr,acronym,object,applet,table,a abbr,a acronym{ border-width:0; }
+th,h1,h2,h3,h4,h5,h6,dt{ font-weight:400; }
+caption,th,td{ text-align:left; }
+
+/* =Deprecated HTML elements
+-------------------------------------------------------------- */
+font,basefont{ color:inherit; font:inherit; font-size:100%; }
+center,[align]{ text-align:inherit; }
+s,strike,u{ text-decoration:inherit; }
+img{ border:none; }
+tr,th,td{ width:auto; height:auto; background-color:transparent; vertical-align:inherit; border:none; }
+table[border]{ border-collapse:separate; border-spacing:0; }
+nobr{ white-space:normal; }
+marquee{ overflow:visible; -moz-binding:none; }
+blink{ text-decoration:none; }
+
+/* =HTML elements
+-------------------------------------------------------------- */
+a{ text-decoration:underline; }
+strong,th,thead td,h1,h2,h3,h4,h5,h6,dt{ font-weight:700; }
+cite,em,dfn{ font-style:italic; }
+pre{ white-space:pre; }
+pre *{ font-size:100%; white-space:pre; }
+del{ text-decoration:line-through; }
+ins,dfn{ border-bottom:1px solid #000; }
+small,sup,sub{ font-size:85%; }
+big{ font-size:125%; line-height:80%; }
+abbr,acronym{ text-transform:uppercase; font-size:85%; letter-spacing:.1em; }
+abbr[title],acronym[title],dfn[title]{ cursor:help; border-bottom:1px dotted #000; }
+sup{ vertical-align:super; }
+sub{ vertical-align:sub; }
+blockquote{ padding:1.7em 1.5em 1px; margin: 0 24px 1.8em 24px; }
+input,select,button{ cursor:pointer; }
+input[type=text],input[type=password]{ cursor:text; }
+input[type=hidden]{ display:none; }
+
+/* =Content basics
+-------------------------------------------------------------- */
+div.master-column h1{ line-height:1.25; font-weight:400; margin-bottom:0.25em; font-size:2em; }
+div.master-column h2{ line-height:1.25; font-weight:400; margin-bottom:0.25em; font-size:1.563em; }
+div.master-column h3{ line-height:1.25; font-weight:400; margin-bottom:0.5em; font-size:1.4em; }
+div.master-column h4{ line-height:1.25; font-weight:400; margin-bottom:0.25em; font-size:1.3em; }
+div.master-column h5{ line-height:1.25; font-weight:400; margin-bottom:0.25em; font-size:1.2em; }
+div.master-column h6{ line-height:1.25; font-weight:400; margin-bottom:0.25em; font-size:1em; }
+div.master-column table{ border-collapse:collapse; width:100%; }
+div.master-column blockquote { background-color:#E9DECF; font-style:italic; }
+div.master-column hr{ display:block; background:black; color:black; width:100%; height:1px; border:none; }
+div.master-column fieldset>:first-child{ margin-top:0; }
+div.master-column textarea { display:block; padding:.1em .2em; }
+div.master-column input[type='text']{ border: 1px solid #E2DDC3; padding: 6px; vertical-align: middle; width: 190px; }
+div.master-column select{ padding:.2em .1em 0; }
+div.master-column select[multiple]{ margin-bottom:.8em; }
+div.master-column option{ padding:0 .4em .1em; }
+div.master-column button{ padding:.3em .5em; }
+div.master-column input[type='radio']{ position:relative; bottom:-.2em; }
+div.master-column dt{ margin-top:.8em; margin-bottom:.4em; }
+div.master-column ul ul, div.master-column ol ul, div.master-column ul ol, div.master-column ol ol{ margin-bottom:0; }
+div.contentSection hr, div.contentSection p, div.contentSection ul, div.contentSection ol, div.contentSection dl, div.contentSection pre, div.contentSection address, div.contentSection table, div.contentSection form{ margin-bottom:1.6em; }
+
+/* Z-indexes */
+ul#navigation{ z-index: 1300; }
+
+/* Posts */
+div.master-column div.post{ line-height:1.5; margin:0 15px; font-size:16px; }
+div.master-column div.post p{ font-size:1em; }
+div.master-column div.post hr{ display:block; background:#000; color:#000; width:100%; height:1px; border:none; }
+div.master-column div.post ul{ list-style:disc outside; }
+div.master-column div.post ol{ list-style:decimal outside; }
+div.master-column div.post p+p{ margin-top:-.8em; }
+div.master-column div.post ul, div.master-column div.post ol{ margin-left:2.2em; }
+
+/* Pages */
+div.master-column div.page{ border-top:8px solid #E9DECF; line-height:1.5; margin:0 15px; padding:6px 0; }
+div.master-column div.page p{ font-size:1em; }
+div.master-column div.page hr{ display:block; background:#000; color:#000; width:100%; height:1px; border:none; }
+div.master-column div.page ul{ list-style:disc outside; }
+div.master-column div.page ol{ list-style:decimal outside; }
+div.master-column div.page p+p{ margin-top:-.8em; }
+div.master-column div.page ul, div.master-column div.page ol{ margin-left:2.2em; }
+
+/* =Content specifics
+-------------------------------------------------------------- */
+div.master-column h2.entry-title{ line-height: 32px; }
+div.contentSection{ border:none !important; width:622px !important; }
+div.master-column div.post div.entry-meta{ font-family:Arial, Helvetica, sans-serif; line-height:1.4; margin-bottom: 18px; font-size:0.75em; }
+div.master-column div.post div.entry-utility{ border-bottom: 1px solid #A7A59B; margin-bottom:18px; padding-bottom:29px; }
+div.master-column div.single div.post div.entry-utility{ border-bottom: 0; margin-bottom:100px; padding-bottom:0; }
+div.master-column div.single div.post div.entry-utility div.post-actions{ margin: 10px 0; line-height: 0.8; }
+div.master-column div.single div.post div.entry-utility div.post-actions div.linkButton{ font-size: medium; }
+div.master-column div.single div.post div.entry-utility div.falcon-posted-in{ margin: 10px 0; float: left; }
+div.master-column h1.page-title{ margin: 0 15px 18px; border-top:8px solid #E9DECF; padding:5px 0 29px; }
+div.master-column div.post h2.entry-title a{ color:#000; }
+div.master-column div.post h2.entry-title a:hover{ color:#4781AA; }
+
+/* HTML Widget */
+div.assanka_htmlwidget p { margin: 1em 0; }
+div.assanka_htmlwidget hr { display: block; background: #E9DECF; color: #E9DECF; width: 100%; height: 1px; border: none; }
+
+/* HTML Widget - Author list */
+div.assanka_htmlwidget .author-list img { max-width: 55px; max-height: 70px; float: left; margin-right: 16px; }
+
+/* Images */
+.alignleft, img.alignleft{ display:inline; float:left; margin:0 10px 0 0; }
+.alignright, img.alignright{ display:inline; float:right; margin:0 0 0 10px; }
+.aligncenter, img.aligncenter{ clear:both; display:block; margin-left:auto; margin-right:auto; }
+.wp-caption{ font-size: 12px; line-height: 18px; margin: 5px 2px 0 0; padding: 0; text-align: left; border:0; background-color: transparent; }
+.wp-caption img{ margin:0; }
+.wp-caption dd.wp-caption-dd, .wp-caption p.wp-caption-text { font-family:Arial, Helvetica, sans-serif; font-size: 12px;  line-height: 16px; margin: 8px 0px; }
+div.entry-attachment img{ height: auto; width: 590px; }
+
+/* Social counters (Facebook|Twitter|Inferno) */
+div.master-column div.hentry div.byline{ margin-bottom:4px; }
+div.master-column div.hentry span.posted-on{ display: block; float: left; height:20px; margin-right: 7px; }
+div.master-column div.hentry span.social-counter{ display:block; float:left; margin-right: 10px; padding-bottom: 18px; }
+div.master-column div.hentry span.twitter-counter{ margin-right: 4px; }
+div.master-column div.hentry span.twitter-counter iframe{ display: block; float: left; }
+div.master-column div.hentry span.social-counter a.facebook-counter{ display: block; width: 27px; padding-left: 63px; height:20px; line-height: 20px; font-weight: 700; text-align:center; background:url(/wp-content/themes/falcon/img/socialcounters/facebook-counter.png) 0 50% no-repeat; }
+div.master-column div.hentry span.inferno-counter a{ display: block; width: 32px; padding-left: 78px; height:20px; line-height: 20px; font-weight: 700; text-align: center; background:url(/wp-content/themes/falcon/img/socialcounters/inferno-counter.png) 0 50% no-repeat; }
+div.master-column div.hentry span.linkedin-counter,
+div.master-column div.hentry span.google-counter { margin-right: 8px; }
+span.compact-inferno-counter a { vertical-align: top; background-color: transparent; background-image: url(/wp-content/themes/falcon/img/close-button.png); background-position: 0 0; padding: 0; margin-right: -3px; width: 23px; height: 21px; text-align: center; line-height: 16px; }
+.linkButton a span, .linkButton form span { padding: 0 4px 0px 7px; line-height: 16px; }
+
+/* Syndicated Posts */
+div.master-column div.syndicated{ border-bottom: 1px solid #A7A59B; background-color:#F6E9D8; background-color:#F6E9D8; margin-bottom:20px; padding:10px; }
+div.master-column div.syndicated-first{ border-top: 1px solid #A7A59B; }
+div.master-column div.syndicated div.entry-utility{ border-bottom: none; padding:0px; }
+div.master-column div.syndicated div.entry-meta a.syndicated-posted-from { text-transform: uppercase; font-weight: 600; }
+div.master-column div.syndicated div.entry-meta span.syndicated-posted-on { color:#777777; }
+div.master-column div.syndicated div.fullstory { line-height: 1.5; padding: 0; margin: 0; }
+
+/* Author Bylines */
+div.master-column .entry-title img.headshot{ float:left; margin-right: 10px; font-size: 10px; }
+div.master-column div.entry-meta span.author_byline { }
+
+/* New posts from promotional categories */
+div.master-column div.newerpostsbanner{ background-color:#E0D1BE; margin:0 15px 30px; padding:20px 14px 1px; }
+div.master-column div.newerpostsbanner h4.entry-title { font-weight:600; margin-bottom:0.5em; }
+div.master-column div.newerpostsbanner h4.entry-title a{ color:#000; }
+div.master-column div.newerpostsbanner h4.entry-title a:hover{ color:#4781AA; }
+div.master-column div.newerpostsbanner p.strapline { margin-bottom: 0.5em; }
+
+/* Content Forms */
+div.master-column div#content h3.mainformheader { clear:both; padding:10px 0; }
+div.master-column div#content form fieldset { margin-bottom: 20px; }
+div.master-column div#content form fieldset.instructions { line-height:normal; }
+div.master-column div#content form .field { padding-top: 17px; }
+div.master-column div#content form .field .label { padding: 0 0 5px 70px; font-size: 13px; }
+div.master-column div#content form .control { padding-left: 70px; }
+div.master-column div#content form .control input,
+div.master-column div#content form .control textarea,
+div.master-column div#content form .control select { width: 345px }
+div.master-column div#content form .control textarea { height: 100px }
+div.master-column div#content form .required .control,
+div.master-column div#content form .required .controlset { background: url(/lib/img/required.png) 57px 5px no-repeat }
+div.master-column div#content form .buttonset { margin-top: 10px }
+div.master-column div#content form .note { display:block; font-size: 12px; color: #555; margin:0 0 2px 70px; padding:4px 0 6px 0; width: 280px }
+div.master-column div#content form .buttonset { margin-left: 70px }
+div.master-column div#content form .error { display:block; padding:2px 0 10px 16px; color:#9E2F50; background:transparent url(/wp-content/themes/falcon/img/formerror.png) no-repeat scroll 2px 5px;margin-left:70px; }
+
+/* Alerts */
+div.master-column span#alertscontainer div.alert{ color: #458B00; font-size: 1.25em; padding: 0 15px 20px; }
+
+/* WP-table-reloaded */
+.ftdatatable { background-color: #fdf8f0; margin-bottom: 32px; border-collapse:collapse; }
+.ftdatatable tr.colourTwo, .ftdatatable tr.odd { background-color:#f8f3ea; }
+.ftdatatable thead tr, .ftdatatable thead tr.odd {background-color: #e9decf; font-size: 12px; }
+.ftdatatable thead tr *{background-color: transparent!important; }
+.ftdatatable td, .ftdatatable th { padding: 6px 10px; font-size: 12px; line-height: 18px; border-right: 1px solid #e3dfd6; }
+.ftdatatable td.last { border-right: 0; }
+.ftdatatable td.title { color: #fff; font-weight:  bold; background-color: #a7a59b; }
+
+/* =Post action links (Print|Email|Share|Clip)
+-------------------------------------------------------------- */
+.post-actions{ float:right; margin:0 0 32px; position: relative; }
+.falconpostactions.linkbox{ padding:0; margin:0; width:207px }
+.falconpostactions.linkbox a{ position:relative; display:block; float:left; height:16px; min-width:40px; padding:0; margin:0; }
+.falconpostactions.linkbox span{ display:block; height:0; overflow:hidden; }
+.printpost{ background:url(/wp-content/themes/falcon/img/postactions/print.png) 0 50% no-repeat; width:45px; }
+.emailafriend{ background:url(/wp-content/themes/falcon/img/postactions/email.png) 0 50% no-repeat; width:50px; }
+.sharepost{ background:url(/wp-content/themes/falcon/img/postactions/share.png) 0 50% no-repeat; width:52px; }
+.clipthis{ background:url(/wp-content/themes/falcon/img/postactions/clipthis.png) 0 50% no-repeat; width:60px; }
+#clipthisform input.maininput{ font-family:Arial, Helvetica, sans-serif; font-size:12px; }
+div.shareList div.title a.close-icon { position: absolute; right: 8px; top: 8px; padding: 0; width: 18px; height: 18px; background: white url(http://im.media.ft.com/m/img/overlay_close.png) no-repeat 0 0; }
+
+/* =Lightbox
+-------------------------------------------------------------- */
+.assankalightbox{ z-index:1301; border-bottom:1px solid #666; border-right:1px solid #666; }
+.assankalightbox .assankalightboxinner{ padding:10px; text-align:left; background-color:#FFF6EC; border:5px solid #CCC; overflow:hidden; font-size:12px; }
+.assankalightbox .assankaLightBoxHideButton{ line-height:12px; color:#aaa; text-decoration:none; border-bottom:none; background:transparent url(/wp-content/themes/falcon/img/lightboxclosebutton.gif) right top no-repeat scroll; width:30px; height:18px; padding:0 15px 0 0; font-size:11px; font-weight:400; color:#787878; }
+.assankalightbox .assankalightboxheader{ overflow:hidden; padding:0; color:#333; font-weight:700; font-size:14px; margin:0 0 8px; }
+* html .assankalightboxheader{ height:1.1em; }
+#txtfriendemail{ width:10em; }
+
+/* "Recommended Reads" widget */
+.master-column .recommends h3 { font-size: 16px; }
+.master-column .recommends ul { list-style: none; margin-left: 0; }
+
+/* =Miscellaneous specific elements
+-------------------------------------------------------------- */
+div.entry-content a.more-link {
+	font-family: Arial, Helvetica, sans-serif;
+	line-height: 1.4;
+	margin-bottom: 13px 0 18px 0;
+	font-size: 0.75em;
+	display: block;
+}
+div.entry-summary div.entry-meta{ margin: -20px 0 20px; }
+div.pagename h1 a{ font-weight:400; }
+.hidden{ display: none; }
+.fullstoryHeader { padding: 0 !important; clear: initial !important; }
+.shareList ul { margin: 0 !important; }
+
+body.multiple-post div.master-column a.more-link { font-family: sans-serif; font-size: 14px; padding: 0 2px; display: inline; white-space: nowrap; }
+
+/* Previous / Next buttons */
+div.backnforth{ margin:0 15px 50px; }
+div.backnforth .go_button{ vertical-align:text-top; }
+div.backnforth .back{ float:left; }
+div.backnforth .back .go_button{ margin-right:5px; }
+div.backnforth .forth{ float:right; }
+div.backnforth .forth .go_button{ margin-left:5px; }
+div.backnforth .back a{ color: #000000; font-size: 16px; line-height: 1; }
+div.backnforth .back a:hover{ color: #4781AA; }
+
+/* 100% height vertical rule between content and sidebar */
+div#sidebar-vertical-rule{ border-left:1px solid #E9DECF; border-left:1px solid #E9DECF; height:100%; position:absolute; right:351px; width:0; top:0; }
+div#sidebar-vertical-rule-hide-top{ height: 82px; position:absolute; right:346px; top:-32px; width:10px; z-index:2; background: #FFF1E0; }
+div.middleSection{ position:relative; }
+
+/* The header search form */
+div#page-title{ width:560px; }
+div.topSection .colright{ float:right; width:auto; }
+form.column-searchform{ padding:14px 0; text-align:right; }
+form.column-searchform input.text{ border:1px solid #E2DDC3; padding:6px; width:190px; }
+form.column-searchform select.searchType{ margin:0 -8px 12px 12px; }
+
+/* Breadcrumbs menu */
+div.bar div.menu-breadcrumbs-menu-container{ color:#000000; font-size:16px; width: 560px; }
+div.bar div.menu-breadcrumbs-menu-container ul{ overflow: auto; }
+div.bar div.menu-breadcrumbs-menu-container li{ display: block; float: left; padding-right:3px; }
+div.bar div.menu-breadcrumbs-menu-container a{ color:#777777; }
+
+/* Link Buttons */
+.linkButton { display: inline; border: 0; margin: 0 0 0 8px; padding: 0; background: transparent; white-space: nowrap; position: relative; z-index: 1100; }
+.linkButton form { float: none; margin-bottom: -5px !important; padding: 0px 7px; }
+.linkButton a{ font-family:Arial, Helvetica, sans-serif; color:#fff; text-decoration:none; cursor:pointer }
+.linkButton a:hover{ color:#DDD }
+.linkButton span{ display:inline-block; padding:0 4px 0 0; font-size:16px; line-height:30px; background:#4781aa url(/wp-content/themes/falcon/img/button_sprite.png) no-repeat scroll right top }
+.linkButton span span{ padding:0 4px 0 8px; background:transparent url(/wp-content/themes/falcon/img/button_sprite.png) no-repeat scroll left -32px }
+
+div.post-actions .linkButton { display: block; float: left; }
+div.post-actions .linkButton a.shared-email { margin-left: 3px;}
+
+.medium span{ display:inline-block; padding:0 4px 0 0; font-size:14px; line-height:24px; background-position:right -64px }
+.medium span span{ background-position:left -90px }
+.small span{ display:inline-block; padding:0 4px 0 0; font-size:12px; line-height:16px; background-position:right -116px }
+.small span span{ background-position:left -134px }
+.largeRed span{ background-position:right -153px }
+.largeRed span span{ background-position:left -185px }
+.mediumRed span{ font-size:14px; line-height:24px; background-position:right -217px }
+.mediumRed span span{ background-position:left -243px }
+.smallRed span{ font-size:12px; line-height:16px; background-position:right -269px }
+.smallRed span span{ background-position:left -287px }
+.submit{ border:0; padding:0; background:transparent; color:#fff; padding:0 0 0 6px; font-family:Arial, Helvetica, sans-serif; cursor:pointer; white-space:nowrap; overflow:visible }
+.submit:hover{ color:#ddd }
+
+/* =Advertising-related elements
+-------------------------------------------------------------- */
+div.topSection div#newssubs { margin:0; }
+div.topSection div.header-advertising { margin: 3px 0px; }
+div.topSection div#header { margin: 0; z-index: 1400; }
+
+/* =Sidebar (Rail) elements and widgets
+-------------------------------------------------------------- */
+div.railComponent { margin-bottom: 0; margin-top: 27px; border-top: 4px solid #A7A59B; }
+div.railSection { margin-bottom: 32px; margin-top: -27px; }
+div.railSection h3{ margin-bottom: 1.2em; }
+div.railSection ul { margin-top: -10px; }
+div.railSection ul li{ margin: 10px 0 0; }
+div.railSection ul.two-column{ width:50%; float: left; }
+div.railSection ul.three-column{ width:33%; float: left; }
+
+/* Show the Category and Archive widgets in columns */
+div.railSection li.cat-item{ width:50%; float: left; }
+div.widget_archive li{ width:50%; float: left; }
+
+/* Hide the grey border at the to of the mpu widget */
+div.railSection div.ft-mpuwidget{ background:none repeat scroll 0 0; padding-top: 22px; text-align:center; }
+
+/* Popular posts */
+div.railSection ol.popposts { list-style-type: decimal; padding: 0; margin-left: 15px; font-weight: bold; color: #777; }
+div.railSection ol.popposts a { font-weight: normal; }
+
+/* Most Commented list */
+.railSection ol.mostcommentedlist { list-style: decimal; margin-left: 15px; font-weight: bold; color: #777; }
+
+/* Emerging Markets Data */
+div.railSection div.ftModule h3.railComponentHeading{ display: none; }
+
+/* WSOD widget */
+div.railSection div.assanka_wsodwidget table{ border-collapse:collapse; margin-bottom:0; width:100%; border-spacing:2px; text-indent:0; line-height:normal; }
+div.railSection div.assanka_wsodwidget table thead{ display:table-header-group; }
+div.railSection div.assanka_wsodwidget table tbody{ display:table-row-group; }
+div.railSection div.assanka_wsodwidget span, div.railSection div.assanka_wsodwidget a, div.railSection div.assanka_wsodwidget table, div.railSection div.assanka_wsodwidget tbody, div.railSection div.assanka_wsodwidget thead, div.railSection div.assanka_wsodwidget tr, div.railSection div.assanka_wsodwidget th, div.railSection div.assanka_wsodwidget td{ border:0 none; font-family:Arial, Helvetica, sans-serif; font-size:100%; font-style:inherit; font-weight:inherit; margin:0; padding:0; vertical-align:baseline; }
+div.railSection div.assanka_wsodwidget tr{ display:table-row; }
+div.railSection div.assanka_wsodwidget th.text, div.railSection div.assanka_wsodwidget td.text{ text-align:left; }
+div.railSection div.assanka_wsodwidget th, div.railSection div.assanka_wsodwidget td{ border-bottom:1px solid #E7E2DB; text-align:right; }
+div.railSection div.assanka_wsodwidget table th{ color:#666; font-size:11px; font-weight:700; padding:3px 4px; vertical-align:bottom; white-space:nowrap; display:table-cell; }
+div.railSection div.assanka_wsodwidget table td{ font-size:12px; padding:6px 4px; vertical-align:middle; font-weight:400; }
+div.railSection div.assanka_wsodwidget table td.lastPrice, div.railSection div.assanka_wsodwidget table td.todayChange, div.railSection div.assanka_wsodwidget table td.yearChange{ white-space:nowrap; }
+div.railSection div.assanka_wsodwidget td.text span.detail{ color:#666; font-size:11px; font-weight:700; }
+div.railSection div.assanka_wsodwidget td.text span.disclaimer{ display:block; float:none; white-space:nowrap; font-size:10px; color:#666; }
+div.railSection div.assanka_wsodwidget span.disclaimer span.datavalue{ font-weight:400; }
+div.railSection div.assanka_wsodwidget .posChange{ color:#458B00; }
+div.railSection div.assanka_wsodwidget .negChange{ color:#C00; }
+div.railSection div.assanka_wsodwidget tr.wsoderror{ display:none; }
+
+/* FT Doublet */
+div.assanka_doubletwidget div.assanka-doublet-item{ margin: 0; padding: 0; float:left; width:167px; }
+div.assanka_doubletwidget div.alignright{ float:right; }
+div.assanka_doubletwidget div.assanka-doublet-item h3 { text-transform:uppercase; font-weight:700!important; font-size:12px!important; color:#4781aa!important; margin-bottom: 8px; }
+div.assanka_doubletwidget div.assanka-doublet-item h3 a,
+div.assanka_doubletwidget div.assanka-doublet-item h3 a:link,
+div.assanka_doubletwidget div.assanka-doublet-item h3 a:visited { color:#4781aa!important; }
+div.assanka_doubletwidget div.assanka-doublet-item p{ margin-top:8px; font-size:14px; line-height:17px; margin-bottom:0; }
+div.assanka_doubletwidget div.assanka-doublet-item p a{ color:#000; }
+
+/* Back to Top Link */
+a.backtotop{ clear: left; display: block; font-size: 14px; margin: 25px 0px 0px 15px; }
+
+/* Ajax calendar */
+#ajaxcalendarwidgetcontainer { text-align: center; line-height: 1.3em; position: relative; }
+#wp-calendar { width: 70%; margin: 0 auto; }
+#wp-calendar th { font-weight: bold; border-bottom: 1px solid rgb(231, 222, 207);  }
+#wp-calendar td a { display: block; width: 100%; }
+#wp-calendar caption { font-weight: bold; padding: 0 30px; line-height: 1.6em; text-align: center; }
+#wp-calendar #today { font-weight: bold; }
+#wp-calendar #calendarprevmonth { float: left; display: inline; margin-left: -30px; font-weight: normal; }
+#wp-calendar #calendarnextmonth { float: right; display: inline; margin-right: -30px; font-weight: normal; }
+#ajaxcalendarwidgetcontainer .spinner { position: absolute; height: 19px; width: 20px; background: url(images/spinnerorange.gif) no-repeat; top: -5px; right: 0; }
+.working #wp-calendar { color: rgb(150, 150, 150); }
+.working #wp-calendar a { color: rgb(145, 171, 190); }
+
+/* =Syndicated FT articles
+-------------------------------------------------------------- */
+div.master-row .story-package h3 { margin: 0 0 14px 0; font-size: 16px; font-weight: normal; }
+div.master-row .story-package h4 { margin-bottom: 3px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+div.master-row .promobox { background: #F6E9D8; }
+div.master-row .promobox h3 { margin: 0 0 14px; font-size: 13px; line-height: 16px; font-weight: bold; }
+
+/* =Print mode
+-------------------------------------------------------------- */
+@media print {
+	div.master-column div.hentry span.social-counter, div.post-actions{ display: none; }
+}
+
+/* Override thegallery lightbox z-index so that it's in front of content */
+div#shShutter { z-index: 2000 !important; }
+div#shDisplay { z-index: 2001 !important; }
+
+/* Fix embeded tweet when it's next to a floated object (blog excerpt with featured image) */
+.twitter-wrapper {
+	clear: both;
+}
+
+/* Livefyre comments widget overrides  */
+
+#ft-article-comments {
+	clear: both;
+	padding: 20px 0 50px 0;
+}
+.railSection #ft-article-comments {
+	padding: 0;
+}

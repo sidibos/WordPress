@@ -1,0 +1,182 @@
+/* @group Container */
+
+div#tabs {
+	font-size:12px;
+	line-height:15px;
+	margin:0 15px 29px;
+	border-bottom: 2px solid #a7a59b;
+	height: 22px;
+	overflow: hidden;
+	position: relative;
+}
+
+div#tabs p {
+	margin: 0;
+	padding: 0 0 5px 0;
+}
+
+/* @end */
+
+
+
+/* @group Title */
+
+h2#title {
+	float: left;
+	font-family: arial, helvetica, sans-serif;
+	font-weight: normal;
+	font-size: 18px;
+	color: #777;
+	margin: 0 0 0 8px;
+	padding: 0;
+}
+
+/* @end */
+
+
+
+/* @group Tabs */
+
+ul.tabs {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	position: absolute;
+}
+
+ul.tabs li {
+	float: left; 
+	padding: 0;
+	height: 24px;
+	line-height: 24px;
+	margin: 0 5px 2px 0;
+	position: relative;
+}
+
+ul.tabs li a {
+	text-decoration: none;
+	background: url(/wp-content/themes/aboutus/img/tabs-bg.gif) no-repeat top right;
+	color: #FFF;
+	display: block;
+	padding: 0 10px 0 0;
+	outline: none;
+	font-size: 12px;
+	color: #2e6e9e;
+}
+
+ul.tabs li a span {
+	float: left;
+	padding-right: 10px;
+	display: block;
+	height: 24px;
+	background: transparent url(/wp-content/themes/aboutus/img/tabs-bg.gif) top left;
+	position: relative;
+}
+
+ul.tabs li.active a {
+	background-position: right -48px;
+	color: #FFF;
+}
+
+ul.tabs li.active a span {
+	background-position: left -48px;
+	position: relative;
+}
+
+ul.tabs li a:hover {
+	background: url(/wp-content/themes/aboutus/img/tabs-bg.gif) no-repeat right -24px;
+	color: #FFF;
+}
+
+ul.tabs li a:hover span {
+	background: url(/wp-content/themes/aboutus/img/tabs-bg.gif) no-repeat left -24px;
+	position: relative;
+}
+
+ul.tabs li.active a:hover {
+	background-position: right -48px;
+}
+
+ul.tabs li.active a:hover span {
+	background-position: left -48px;
+	position: relative;
+}
+
+/* The RSS icon in the navigation menu */
+ul#navigation .on .subnav li.rss-feed{ float: right ; }
+ul#navigation .on .subnav li.rss-feed a span{ padding:0; }
+ul#navigation .on .subnav li.rss-feed a img{ display: block; float: left; margin-right: 5px; }
+
+/* @end */
+
+/* @group SubTabs */
+ul.subtabs{
+	margin:0 8px;
+}
+ul.subtabs li{	
+	border-left:1px solid #777777;
+	display:block;
+	float:left;
+	line-height:12px;
+	margin:8px 0;
+}
+ul.subtabs li.first{
+	border:none;
+}	
+ul.subtabs li a{
+	padding:4px;
+}	
+/* @end */
+
+/* @group Newsflash */
+
+ul.tabs li a.newflash {
+	background-position: right -72px;
+	padding-right: 25px;
+}
+
+ul.tabs li a.newflash:hover {
+	background-position: right -96px;
+}
+
+ul.tabs li a.newflash:hover span {
+	background-position: left -96px;
+}
+
+ul.tabs li a.newflash span {
+	background-position: left -72px;
+}
+
+ul.tabs li.active a.newflash {
+	background-position: right -120px;
+}
+
+ul.tabs li.active a.newflash:hover {
+	background-position: right -120px;
+}
+
+ul.tabs li.active a.newflash:hover span {
+	background-position: left -120px;
+}
+
+ul.tabs li.active a.newflash span {
+	background-position: left -120px;
+}
+
+/* @end */
+
+
+
+/* @group Content */
+
+.tab_container {
+	background-color:#F6E9D8;
+	float:left;
+	margin-bottom:20px;
+	padding:8px 0px 5px 0px;
+	width:100%;
+}
+.tab_container a.active{
+	color:#43423E;
+}
+/* @end */
