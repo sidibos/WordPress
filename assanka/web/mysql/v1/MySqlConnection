@@ -1,0 +1,150 @@
+<?php
+/*
+########################################################
+Contains connection information for mysql database.
+Establishes connection to database for application.
+
+23/10/2004
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+
+
+class MySqlConnection {
+	
+	var $server;
+	var $username;
+	var $password;
+	var $dbname;
+	var $querycount = 0;
+	var $connectionOpened = false;
+	var $conn;
+
+	// Change Sept 2005 - when the class is created, a database connection
+	// is no longer opened at once.  Instead, all the details are stored
+	// and the connection is instead opened at the time of the first query.
+	// This has two advantages; first, files such as global which automatically
+	// set up a connection no longer automatically open the connection, thus
+	// preventing unused connections from being opened; secondly, the connection
+	// is only opened on first query execution, meaning that all connections
+	// are open for a shorter period of time.
+	function MySqlConnection ($server, $username, $password, $dbname) {
+		$this->server = $server;
+		$this->username = $username;
+		$this->password = $password;
+		$this->dbname = $dbname;
+	}
+
+	// Perform a query
+	function query($query, $suppresserrors=false) {
+	
+		// Check for an open connection, and establish if necessary
+		if (!$this->connectionOpened) {
+			$this->conn = mysql_connect($this->server, $this->username, $this->password, false, 128) or trigger_error ("Database server could not be contacted", E_USER_ERROR);
+			mysql_select_db($this->dbname, $this->conn) or trigger_error ("Database was not found", E_USER_ERROR);
+			$this->connectionOpened = true;
+		}
+		
+		$this->querycount++;
+		if (!$local_result = mysql_query($query, $this->conn) and !$suppresserrors) {
+			trigger_error(mysql_error()." occured in query: ".$query."\n", E_USER_ERROR);
+			return false;
+		} else {
+			$_SESSION["dbg"]["lastquery"] = $query;
+			return $local_result;
+		}
+	}
+
+	// Perform a crosstab query and correlate the results into an array
+	function crosstab($query) {
+
+		// Check for an open connection, and establish if necessary
+		if (!$this->connectionOpened) {
+			$this->conn = mysql_connect($this->server, $this->username, $this->password) or trigger_error ("Database server could not be contacted", E_USER_ERROR);
+			mysql_select_db($this->dbname, $this->conn) or trigger_error ("Database was not found", E_USER_ERROR);
+			$this->connectionOpened = true;
+		}
+
+		$this->querycount++;
+		if (!$local_result = mysql_query($query, $this->conn)) {
+				trigger_error(mysql_error()." occured in query: ".$query."\n", E_USER_ERROR);
+				return false;
+		} else {
+				$_SESSION["dbg"]["lastquery"] = $query;
+		}
+
+		while ($row = $this->fetchrow($local_result)) {
+				$data[$row["y"]][$row["x"]]=$row["data"];
+		}
+		return $data;
+	}
+
+	// Fetch a row from an SQL resultset as an associative array.
+	function fetchrow($result) {
+		if (!$data = mysql_fetch_assoc($result)) {
+			return false;
+		} else {
+			return $data;
+		}
+	}
+
+	// Wrapper to escape string text for insertion into the database.
+	function sqlenc($string) {
+		return mysql_escape_string(stripslashes($string));
+	}
+
+	// Returns number of queries performed this session
+	function getQueryCount() {
+		return $this->querycount;
+	}
+
+	// Return data as CSV:
+	function getcsv($result,$lineend="\r\n") {
+		$headerdone=false;
+
+		while ($row = $this->fetchrow($result)) {
+			if (!$headerdone) {
+				$csvrow="";
+				$header="";
+				foreach($row as $key=>$value) {
+					$header.="\"$key\",";
+					if (is_numeric($value)) {
+						$csvrow.=$value.",";
+					} else {
+						$csvrow.="\"".addslashes($value)."\",";
+					}
+				}			
+				// Then trim off the last comma:
+				$header = substr($header,0,strlen($header)-1);
+				$csvrow = substr($csvrow,0,strlen($csvrow)-1);
+				$headerdone=true;
+				$op=$header.$lineend.$csvrow.$lineend;
+			} else {
+				$csvrow="";
+				foreach($row as $key=>$value) {
+					if (is_numeric($value)) {
+						$csvrow.=$value.",";
+					} else {
+						$csvrow.="\"".addslashes($value)."\",";
+					}
+				}			
+				// Then trim off the last comma:
+				$csvrow = substr($csvrow,0,strlen($csvrow)-1);
+				$op.=$csvrow.$lineend;
+			}
+		}
+		return $op;
+	}
+}
+
+?>

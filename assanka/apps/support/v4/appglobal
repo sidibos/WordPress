@@ -1,0 +1,100 @@
+<?php
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+require_once($_SERVER['CORE_PATH']."/helpers/templatemanager/v4/templatemanager");
+require_once($_SERVER['CORE_PATH']."/helpers/adminwidgets/datatable/v2/datatable");
+require_once($_SERVER['CORE_PATH']."/helpers/adminwidgets/columnlist/v2/columnlist");
+require_once($_SERVER['CORE_PATH']."/helpers/adminwidgets/messagelist/v2/messagelist");
+require_once($_SERVER['CORE_PATH']."/helpers/adminforms/v2/forms");
+require_once($_SERVER['CORE_PATH']."/helpers/validator/v1/validator");
+require_once($_SERVER['CORE_PATH']."/helpers/sms/v1/sms");
+require_once($_SERVER['CORE_PATH']."/helpers/mail/v1/mail");
+require_once($_SERVER['CORE_PATH']."/helpers/common/v2/common");
+require_once($_SERVER['CORE_PATH']."/helpers/database/query/v1/query");
+
+require_once("appfunctions");
+require_once("appmodel");
+
+$page->addSubsection("Getting started", "info");	
+$page->addSubsection("Request support", "new");	
+$page->addSubsection("View support requests", "requests");	
+$page->addSubsection("Knowledge base", "knowledge");
+
+$page->add("screenstyleincludes", "lib/css/support.css");
+$page->add("jsincludes", "lib/js/support.js");
+
+$isfeedrequest = (strpos($_SERVER["REQUEST_URI"], $page->getRoot()."/".$page->getAppNamespace()."/feeds/") === 0);
+$isinforequest = ($_SERVER["REQUEST_URI"] == $page->getRoot()."/".$page->getAppNamespace()."/info/");
+
+// To access the support system, the user just needs to be logged in
+// Unless they're requesting a feed
+if (!$isfeedrequest) $auth->checkRights();
+
+// Temp directory for uploaded files before they're moved to utils.support.assanka.com
+define("SUPPORT_FILES_DIR", "/lib/tmp/supportfiles");
+if (!is_dir($_SERVER["DOCUMENT_ROOT"].SUPPORT_FILES_DIR)) {
+	mkdir($_SERVER["DOCUMENT_ROOT"].SUPPORT_FILES_DIR, 0777, true);
+}
+
+// Define location of vhost that saves files permanently
+define ("SUPPORT_FILES_SAVE_HOST","http://assanka:chase17regular@utils.support.assanka.com");
+
+// Create a new connection to the support database for all users
+$sdb = new MySqlConnection("db.support.assanka.com", "assksupport", "assksupport", "asskhelpdesk");
+$sdb->disableInjectionChecking();
+
+if (!$isfeedrequest) {
+
+	// If this user is a support contact, load their details
+	if (!isset($_SESSION["support"]) and $auth->checkRights("support", false) and isset($auth->user["supportkey"]) and is_numeric($auth->user["supportkey"])) {
+		$supportDetails = $sdb->queryRow("SELECT id AS userid, displayname AS username, email AS useremail, mobile AS usermobile FROM users WHERE {id}", array("id"=>$auth->user["supportkey"]));
+		if ($supportDetails) $_SESSION["support"] = $supportDetails;
+	}
+
+	// If this user isn't a support contact or support is disabled, make sure they're on the info page
+	if (!isset($_SESSION["support"])) {
+		if (!$isinforequest) {
+
+			// Knowledge base is also allowed IF this site has set a project code scope
+			if (!$page->getSetting("kbclient") or strpos($_SERVER["REQUEST_URI"], $page->getRoot()."/".$page->getAppNamespace()."/knowledge/") === false) {
+				$page->redirect("info/");
+			}
+		}
+	} else {
+
+		// Get the permissions of this user, to determine which projects and clients they should have access to.
+		$_SESSION["support"]["isdeveloperonanyproject"] = false;
+		$sdb->query("SELECT client, project, isdeveloper FROM permissions WHERE {userid}", $_SESSION["support"]);
+		if ($sdb->getNumResults()) {
+			$criteria = array();
+			while ($row = $sdb->getRow()) {
+				if ($row["isdeveloper"]) $_SESSION["support"]["isdeveloperonanyproject"] = true;
+				if (!$row["client"]) break;
+				elseif ($row["project"] == "") $criteria[] = "client='".$row["client"]."'";
+				else $criteria[] = "(client='".$row["client"]."' AND project='".$row["project"]."')";
+			}
+			$_SESSION["support"]["permissions"] = implode(" OR ", $criteria);
+			$sdb->query("SELECT client, project, name, supportpkg FROM projects ". (($_SESSION["support"]["permissions"]) ? "WHERE ".$_SESSION["support"]["permissions"]:"") . " ORDER BY client ASC, project ASC");
+			if (!$sdb->getNumResults()) {
+				$page->set("title", "Support");
+				$page->set("contenttitle", "No projects available");
+				$page->set("content", "<p class=\"paddedcontent\">You do not appear to have any project codes assigned to your support account.  Please call the Assanka helpdesk on 0870 085 2038 for assistance.</p>");
+				$page->outputHTML();
+			}
+		} else {
+			$page->set("title", "Support");
+			$page->set("contenttitle", "No projects available");
+			$page->set("content", "<p class=\"paddedcontent\">You do not appear to have any project codes assigned to your support account.  Please call the Assanka helpdesk on 0870 085 2038 for assistance.</p>");
+			$page->outputHTML();
+		}
+	}
+}
+?>

@@ -1,0 +1,127 @@
+<?php
+$_GET["text"] = stripslashes($_GET["text"]);
+$hash = md5($_GET["text"].$_GET["colour"].$_GET["selected"]);
+if (file_exists($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/NR_tabimg_".$hash)) {
+
+	/* Send image from local filesystem cache */
+
+	header('Expires: '.date("r", time()+31536000));
+	header('Cache-Control: max-age=31536000, public'); 
+	header("Content-type: image/png");
+	readfile($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/NR_tabimg_".$hash);
+} else {
+
+	/* Create image from scratch */
+
+	// Include some anti-aliasing functions to generate (marginally) smoother curves at the corners of the tab
+	require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+	require_once("antialiasing");
+
+	// Check that tmp directory exists, if not create it
+	if (!is_dir($_SERVER["DOCUMENT_ROOT"]."/lib/tmp")) {
+		Common:recursivemkdir($_SERVER["DOCUMENT_ROOT"]."/lib/tmp");
+		chmod($_SERVER["DOCUMENT_ROOT"]."/lib/tmp", 0777);
+	}
+
+	// The height of a "selected" tab in pixels. The total height of the image generated will
+	// be this figure plus one pixel for the baseline, regardless of whether the tab is
+	// selected or not (the space at the top and one pixel between the baseline and the
+	// unselected tab height will be filled in the background colour.
+	define("SELECTED_HEIGHT", 25);
+
+	// The height of the unselected tab. This should leave a one pixel gap between the bottom
+	// of the tab and the baseline, with as much extra whitespace at the top as is necessary
+	// to make the final height one pixel greater than the SELECTED_HEIGHT definition.
+	define("UNSELECTED_HEIGHT", 21);
+
+	// The radius of the arcs at the top corners of the image in pixels.
+	define("ARC_RADIUS", 9);
+
+	// The background colour (above the tabs) as a hexadecimal string RRGGBB.
+	define("BACKGROUND_COLOUR", "ffffff");
+
+	// The colour of the baseline pixel (also the colour of the one pixel border around the
+	// selected tab.
+	define("BASELINE_COLOUR", "888888");
+
+	// The font colour, path to the TrueType file, and point size.
+	define("FONT_COLOUR", "ffffff");
+	define("FONT_PATH", $_SERVER["CORE_PATH"]."/web/admin/v3/fonts/arialbd.ttf");
+	define("FONT_SIZE", 8);
+
+	// Whether this is the selected tab.
+	$selected = $_GET["selected"] == "yes";
+
+	// The colour to fill this tab.
+	$tabcolour = $_GET["colour"];
+
+	// The text to print on the tab.
+	$text = $_GET["text"];
+
+	// The width of the tab
+	$width = imagettffontwidth(FONT_SIZE, 0, FONT_PATH, $text) + ARC_RADIUS * 2 + 1;
+
+	$tab = imagecreatetruecolor($width, SELECTED_HEIGHT + 1);
+
+	// Create the palette.
+	$background = allocateHexColour($tab, BACKGROUND_COLOUR);
+	$baseline = allocateHexColour($tab, BASELINE_COLOUR);
+	$underline = allocateHexColour($tab, $tabcolour, true);
+	$tabcolour = allocateHexColour($tab, $tabcolour);
+	$fontcolour = allocateHexColour($tab, FONT_COLOUR);
+
+	// Clear to the background colour.
+	imagefill($tab, 0, 0, $background);
+
+	// Draw the baseline.
+	imagesetthickness($tab, 1);
+	imageline($tab, 0, SELECTED_HEIGHT, $width, SELECTED_HEIGHT, $baseline);
+
+	// The curves at the top corners of the tab.
+	imagesmootharc($tab, ARC_RADIUS - 1, $selected ? ARC_RADIUS - 1 : ARC_RADIUS + SELECTED_HEIGHT - UNSELECTED_HEIGHT - 1, ARC_RADIUS * 2, ARC_RADIUS * 2, 180, 270, $selected ? $baseline : $tabcolour);
+	imagesmootharc($tab, $width - ARC_RADIUS - 2, $selected ? ARC_RADIUS - 1 : ARC_RADIUS + SELECTED_HEIGHT - UNSELECTED_HEIGHT - 1, ARC_RADIUS * 2, ARC_RADIUS * 2, 270, 0, $selected ? $baseline : $tabcolour);
+
+	// Fill in the insides of the arcs so they don't anti-alias.
+	imagefilledarc($tab, ARC_RADIUS - 1, $selected ? ARC_RADIUS - 1 : ARC_RADIUS + SELECTED_HEIGHT - UNSELECTED_HEIGHT - 1, ARC_RADIUS * 2, ARC_RADIUS * 2, 180, 270, $background, IMG_ARC_PIE);
+	imagefilledarc($tab, $width - ARC_RADIUS - 2, $selected ? ARC_RADIUS - 1 : ARC_RADIUS + SELECTED_HEIGHT - UNSELECTED_HEIGHT - 1, ARC_RADIUS * 2, ARC_RADIUS * 2, 270, 0, $background, IMG_ARC_PIE);
+
+	// The top of the tab
+	imageline($tab, ARC_RADIUS / 2, $selected ? 0 : SELECTED_HEIGHT - UNSELECTED_HEIGHT - 1, $width - ARC_RADIUS / 2 - 2, $selected ? 0 : SELECTED_HEIGHT - UNSELECTED_HEIGHT -1, $selected ? $baseline : $tabcolour);
+
+	// The left and right edges of the tab
+	foreach (array(0, $width - 2) as $x) {
+		imageline($tab, $x, $selected ? ARC_RADIUS / 2 : ARC_RADIUS + SELECTED_HEIGHT - UNSELECTED_HEIGHT - 1, $x, $selected ? SELECTED_HEIGHT - 1 : SELECTED_HEIGHT - 3, $selected ? $baseline : $tabcolour);
+	}
+
+	// The bottom edge of the tab, which will overwrite the baseline if this is the selected tab.
+	imageline($tab, 0, $selected ? SELECTED_HEIGHT : SELECTED_HEIGHT - 2, $width - 2, $selected ? SELECTED_HEIGHT : SELECTED_HEIGHT - 2, $tabcolour);
+
+	// Fill in the rest of the tab.
+	imagefill($tab, ARC_RADIUS / 2, SELECTED_HEIGHT - 3, $tabcolour);
+
+	// Add the text.
+	imagettftext($tab, FONT_SIZE, 0, ARC_RADIUS - 1, SELECTED_HEIGHT - ARC_RADIUS + (FONT_SIZE / 4), $fontcolour, FONT_PATH, $text);
+
+	// Save the image
+	imagepng($tab, ($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/NR_tabimg_".$hash));
+
+	// Output the image to the browser
+	header('Expires: '.date("r", time()+31536000)); 
+	header('Cache-Control: max-age=31536000, public'); 
+	header("Content-type: image/png");
+	imagepng($tab);
+}
+
+
+// Allocate a colour based on a provided hexadecimal string RRGGBB.
+function allocateHexColour($image, $colour, $whiten = false) {
+	sscanf($colour, "%2x%2x%2x", $red, $green, $blue);
+	if ($whiten) {
+		foreach (array("red", "green", "blue") as $colour) {
+			$$colour = 255 - ((255 - $$colour) / 2);
+		}
+	}
+	return imagecolorallocate($image, $red, $green, $blue);
+}
+
+?>

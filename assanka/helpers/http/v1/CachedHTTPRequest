@@ -1,0 +1,148 @@
+<?php
+/**
+ * A version of the HTTPRequest class which also handles caching
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Only include the HTTPRequest class if it's not already set - this allows tests to define their own mock HTTPRequestV1 without causing naming clashes
+if (!class_exists('HTTPRequestV1')) require_once __DIR__ . '/HTTPRequest';
+require_once $_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/exception';
+
+class CachedHTTPRequestV1 extends HTTPRequestV1 {
+
+	/**
+	 * Lazy cache rules: if missing: SYNC; if fresh: CACHE; if stale: CACHE & ASYNC
+	 */
+	const CACHE_LAZY = 1;
+
+	/**
+	 * Strict cache rules: if missing: SYNC; if fresh: CACHE; if stale: SYNC
+	 */
+	const CACHE_STRICT = 2;
+
+	/**
+	 * None cache rules: if missing: SYNC; if fresh: SYNC; if stale: SYNC
+	 */
+	const CACHE_NONE = 3;
+
+	/**
+	 * Refresh cache rules: if missing: NULL; if fresh: NULL & ASYNC; if stale: NULL & ASYNC
+	 */
+	const CACHE_REFRESH = 4;
+
+
+	private $_overrideCacheTTL = null;
+	private $_memcache;
+	private $_now;
+	private $_cacheOption;
+
+	/**
+	 * Constructor
+	 *
+	 * @param string   $url The URL to request
+	 * @param DateTime $now Sometimes 'now' to be when the script started, so it can be optionally passed in
+	 */
+	public function __construct($url = false, DateTime $now = null) {
+		$this->_cacheOption = self::CACHE_LAZY;
+		$this->_now = $now;
+		parent::__construct($url);
+	}
+
+	private function _now() {
+		if (!$this->_now) {
+			$this->_now = new DateTime();
+		}
+		return $this->_now;
+	}
+
+	/**
+	 * Set the length of time to cache URLs requested through this instance
+	 *
+	 * @param integer $seconds The number of seconds
+	 * @return void
+	 */
+	public function setCacheTTL($seconds) {
+		$this->_overrideCacheTTL = (int)$seconds;
+	}
+
+	/**
+	 * Set cache reference behaviour
+	 *
+	 * @param integer $newopt Cache behaviour option (use constants)
+	 * @return void
+	 */
+	public function setCacheMode($newopt) {
+
+		// TODO:LB:20130117: Remove this line when implementing redmine #12097
+		// For modes which haven't yet been implemented, use CACHE_STRICT
+		if ($newopt === self::CACHE_LAZY or $newopt === self::CACHE_REFRESH) {
+			$newopt = self::CACHE_STRICT;
+		}
+
+		$this->_cacheOption = $newopt;
+	}
+
+	/**
+	 * Pass in the cache manager, for now just Memcache
+	 *
+	 * @param MemcacheAccessV1 $memcache The caching layer to be use
+	 * @return void
+	 */
+	public function useMemcache(MemcacheAccessV1 $memcache) {
+
+		// TODO:MA:20130417 Update this (and associated memcache access object)
+		// to use the key value store interface.
+		$this->_memcache = $memcache;
+	}
+
+	/**
+	 * Apply caching rules, returning cached data if appropriate otherwise execute the HTTP request
+	 *
+	 * @return array Reponse object
+	 */
+	public function send() {
+		if ($this->_overrideCacheTTL !== null) {
+			$overridettl = $this->_overrideCacheTTL;
+		} else {
+
+			// TODO:LB:20130117: Remove this line when implementing redmine #12098
+			throw new InvalidCallException("Specify a ttl using setCacheTTL, (or add support for RFC2616 caching in CachedHTTPRequest)", 0, null, get_defined_vars());
+		}
+
+		$key = md5($this->getCliEquiv());
+		if (!$this->_memcache and $this->_cacheOption != self::CACHE_NONE) throw new InvalidCallException("Only CACHE_NONE can work without memcache instance.", 0, null, get_defined_vars());
+
+		if ($this->_cacheOption == self::CACHE_LAZY or $this->_cacheOption == self::CACHE_STRICT) {
+			$cacheddata = $this->_memcache->get($key);
+			if ($cacheddata) {
+				$responsewrapper = unserialize($cacheddata);
+
+				// Check whether response is still fresh
+				if ($responsewrapper['lastfetch'] + $overridettl > $this->_now()->format('U')) {
+					return $responsewrapper['response'];
+				}
+			}
+		}
+
+		$response = parent::send();
+
+		// Cache the response if memcache is being used and the response is cacheable.
+		if ($this->_memcache) {
+			$status = $response->getResponseStatusCode();
+			if ($status >= 200 and $status < 300) {
+				$responsewrapper = array(
+					'response' => $response,
+					'lastfetch' => $this->_now()->format('U')
+				);
+
+				// Use serialize rather than json_encode so that the Repsonse object can be easily recreated later
+				// We're not putting an expiry time on this memcache entry
+				// because we want to be able to retrieve stale data
+				$this->_memcache->set($key, serialize($responsewrapper));
+			}
+		}
+		return $response;
+	}
+}

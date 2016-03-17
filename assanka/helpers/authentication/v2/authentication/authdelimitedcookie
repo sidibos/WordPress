@@ -1,0 +1,142 @@
+<?php
+/**
+ * Authenticate a user using a cookie signed with a shared secret
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER['CORE_PATH'].'/helpers/authentication/v2/interfaces');
+
+class AuthDelimitedCookie implements AssankaAuthenticationInterface {
+
+	private static $cookiename, $delimiter, $secret, $hashmethod, $sigincludesdelimiters, $ttl, $logouturl;
+	private static $offsets = array();
+	private static $user;
+
+	private static $flags = 0;
+	private static $iscached = false;
+
+	/**
+	 * Initialise the cookie details
+	 *
+	 * Sets the name of the cookie to read, and the position of the user identifier within the cookie string based on a specified delimiter
+	 *
+	 * @param string  $name         The name of the cookie
+	 * @param string  $delim        The delimiting character (eg : , | ; etc)
+	 * @param integer $useridoffset The position of the primary user identifier in the sequence of values, starting at zero
+	 * @return void
+	 */
+	public static function useCookie($name, $delim, $useridoffset) {
+		self::$cookiename = $name;
+		self::$delimiter = $delim;
+		self::$offsets['uid'] = $useridoffset;
+	}
+
+	/**
+	 * Sets up a check that the cookie contains a valid signature at the specified offset
+	 *
+	 * The actual check will be performed when authenticate() is called.
+	 *
+	 * @param integer $offset            The offset (starting from 0) of the signature string within the cookie's delimited parts
+	 * @param string  $secret            The secret that should have been used to generate the sig
+	 * @param string  $hashmethod        The hash function that should be used to produce the sig (supported hash functions are 'md5' and 'sha1')
+	 * @param boolean $includedelimiters Whether to include the delimiters in the string to sign.  If true, the delimiters surrounding the sig's position in the string will also be included.
+	 * @return void
+	 */
+	public static function verifySignature($offset, $secret, $hashmethod='md5', $includedelimiters=false) {
+		self::$secret = $secret;
+		self::$hashmethod = $hashmethod;
+		self::$offsets['sig'] = $offset;
+		self::$sigincludesdelimiters = $includedelimiters;
+	}
+
+	/**
+	 * Sets up a check that the cookie was generated recently enough to still be considered valid
+	 *
+	 * The actual check will be performed when authenticate() is called.
+	 *
+	 * @param integer $offset The offset (starting from 0) of the generation timestamp within the cookie's delimited parts
+	 * @param boolean $ttl    The oldest acceptable cookie age, in seconds
+	 * @return void
+	 */
+	public static function verifyTTL($offset, $ttl) {
+		self::$offsets['gentime'] = $offset;
+		self::$ttl = $ttl;
+	}
+
+	/**
+	 * Authenticate the user based on a cookie
+	 * 
+	 * At a minimum, will split up the cookie and return the user ID component.  Where signature or TTL checks have been set up using verifySignature and verifyTTL, these will be tested, and if they fail, will change the return value to null.
+	 * 
+	 * @param integer $flags Bitwise flags as defined in AssankaAuthenticationInterface (however, cookie checks are always stateless - using the STATELESS flag or not does not change the behaviour, so $flags is not used in the AuthDelimitedCookie implementation).
+	 * @return integer User ID component of cookie
+	 */
+	public static function authenticate($flags=0) {
+		if (empty($_COOKIE[self::$cookiename])) {
+			self::$user = null;
+		} else {
+			$parts = explode(self::$delimiter, $_COOKIE[self::$cookiename]);
+			$count = count($parts);
+			if ($count <= self::$offsets['uid']) {
+				self::$user = null;
+				return self::$user;
+			}
+			self::$user = $parts[self::$offsets['uid']];
+			if (!empty(self::$secret)) {
+				if ($count <= self::$offsets['sig']) {
+					self::$user = null;
+					return self::$user;
+				}
+				$stringtosign = '';
+				for ($i = 0; $i < $count; $i++) {
+					if (self::$offsets['sig'] != $i) {
+						$stringtosign .= $parts[$i];
+						if (self::$sigincludesdelimiters) $stringtosign .= self::$delimiter;
+					}
+				}
+				$stringtosign .= self::$secret;
+				if (self::$hashmethod == 'md5') {
+					$sig = md5($stringtosign);
+				} elseif (self::$hashmethod == 'sha1') {
+					$sig = sha1($stringtosign);
+				} else {
+					throw new AssankaException('Unknown hash method');
+				}
+				if ($sig != $parts[self::$offsets['sig']]) self::$user = null;
+			}
+			if (!empty(self::$ttl)) {
+				if ($count <= self::$offsets['gentime']) {
+					self::$user = null;
+					return self::$user;
+				}
+				if ($parts[self::$offsets['gentime']] < (time() - self::$ttl)) {
+					self::$user = null;
+				}
+			}
+		}
+		return self::$user;
+	}
+
+	// REVIEW:AB:20101228: Is this required?  Seems better to simply call logout() externally, and for that to kill the cookie and take a redirect URL as a param.
+	public static function setLogoutDest($url) {
+		self::$logouturl = $url;
+	}
+
+	public static function logout() {
+		header("Location: ".self::$logouturl);
+		exit;
+	}
+
+	/**
+	 * Returns true if the user's authentication state was retrieved from a session-based cache
+	 *
+	 * In the case of signed, delimited cookies, the auth state is checked every time, as it is quicker to do that than do a cache lookup.
+	 * 
+	 * @return boolean Always false
+	 */
+	public static function isCached() {
+		return false;
+	}
+}

@@ -1,0 +1,38 @@
+.supportongoing {
+	display: block;
+	text-decoration: none;
+	background-color: #FFFFCC;
+	border: 1px solid black;
+	font-size: 11px;
+	font-weight: bold;
+	color: #333;
+	margin: 0 5px 15px 5px;
+	padding: 5px;
+}
+.supportongoing:hover {
+	background-color: #FFFFDD;
+	color: #002;
+	text-decoration: none;
+}
+#supportcontactinfo {
+	float: right;
+	width: 350px;
+	padding-left: 10px;
+	margin-left: 10px;
+	margin-bottom: 5px;
+	margin-right: 10px;
+	background-color: #E1EAFF;
+	border: 1px solid #95BAFF;
+}
+#supportcontactinfo table td {
+	vertical-align: middle;
+}
+#autocomment span { padding-right: 12px }
+
+#occurrenceslist { width: auto; }
+
+.supportmsg.devonly { background-color: #F3EBF5; border: 1px solid #9950B8 }
+.supportmsg.devonly .metadata { background-color: #E1D1E7 }
+.supportmsg.lastocc { background-color: #F7D7D8; border: 1px solid #CC0000 }
+.supportmsg.lastocc .metadata { background-color: #F1B8B9 }
+.supportmsg .msgcontent { white-space: normal; word-wrap: break-word; overflow-wrap: break-word }

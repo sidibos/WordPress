@@ -1,0 +1,212 @@
+<?php
+/**
+ * Edgecast API client
+ *
+ * Provides a wrapper class for interacting with the Edgecast Web Services
+ * API (https://my.edgecast.com/utility/download.aspx?f=/docs/EdgeCast_WebServices_API_2.6.pdf)
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ * @codingstandard ftlabs-phpcs
+ */
+
+class EdgeCastAPIV1 {
+
+	const MEDIA_HTTP = 3, MEDIA_HTTP_SMALL = 8, MEDIA_FLASH = 2, MEDIA_WINDOWSMEDIA = 1;
+	const STORE_EC_SHARED = "00", STORE_ORIGIN_SHARED = "80", STORE_EC_DEDICATED = "40", STORE_ORIGIN_DEDICATED = "C0";
+
+	private $_username = "andrew.betts@assanka.net";
+	private $_password = "z9xzP8wB";
+	private $_customerid = "0941";
+	private $_origin = "";
+	private $_storemode = self::STORE_ORIGIN_SHARED;
+	private $_credential;
+	private $_clients = array();
+	private $_endpoints = array("PurgeFileFromEdge"=>"media", "LoadFileToEdge"=>"media", "TokenDirAdd"=>"media", "TokenEncrypt"=>"media", "TokenKeyUpdate"=>"media", "CompleteDownloadsGet"=>"reporting", "CustomerBytesTransferredByMediaTypeGet"=>"reporting", "CustomerBytesTransferredGet"=>"reporting", "DirStatsGet"=>"reporting", "FileStatsGet"=>"reporting");
+	private $_wsdl = array("media"=>"http://api.edgecast.com/v1/MediaManager.asmx?WSDL", "reporting"=>"http://api.edgecast.com/v1/Reporting.asmx?WSDL");
+	private $_enabletrace = false;
+
+	private $_edgehost = "ne.edgecastcdn.net";
+
+	public $lasterror;
+	public $lastrequest;
+	public $lastresponse;
+
+	/**
+	 * Constructor method.  
+	 *
+	 * Accepts three parameters that can be used to override the default login details
+	 *
+	 * @param string $username   Value to override the authentication username used by the class
+	 * @param string $password   Value to override the authentication password used by the class
+	 * @param string $customerid Value to override the Edgecast customer ID used by the class
+	 * @return void
+	 */
+	public function __construct($username = false, $password = false, $customerid=false) {
+		if ($username) $this->_username = $username;
+		if ($password) $this->_password = $password;
+		if ($customerid) $this->_customerid = $customerid;
+		$this->_credential = "c:bas:".$this->_username.":".$this->_password;
+	}
+
+	/**
+	 * Sets the origin host to use
+	 *
+	 * Edgecast offers an 'in the cloud' storage platform called 'Edgecast origin'.  If you use this then the files served by Edgecast are loaded from its own storage, and therefore must be explicitly uploaded using the load() method.  EdgeCast also offers the alternative 'Customer Origin, where files are loaded to the edge automatically from an origin server outside the Edgecast network.  If you are using Customer Origin, this method sets the host from which your content will be loaded.   In order to specify a host here, it must have been preconfgured in the Edgecast Media Control Centre web UI.
+	 *
+	 * @param string $origin Hostname of your origin server
+	 * @return void
+	 */
+	public function setOrigin($origin) {
+		$origin = trim(strtolower($origin));
+		if (!preg_match("/^([a-z0-9][a-z0-9-]{0,62}\.)+([a-z]{2,4})$/i", $origin)) throw new Exception('Origin must be a valid hostname');
+		$this->_origin = "/".$origin;
+	}
+
+	/**
+	 * Set the storage mode to use
+	 *
+	 * Edgecast offers four storage modes - EdgeCast Origin with Shared Edge (STORE_EC_SHARED), EdgeCast Origin with Dedicated Edge (STORE_EC_DEDICATED), Customer Origin with Shared Edge (STORE_ORIGIN_SHARED) and Customer Origin with Dedicated Edge (STORE_ORIGIN_DEDICATED).  If using Customer origin, remember to set an origin host using setOrigin() (and see docs for setOrigin() for explanation of Customer vs Edgecast Origin).  Shared vs Dedicated Edge relates to how copies of your content is stored when it reaches Edgecast's edge nodes.  Shared Edge means sharing a fixed pool of storage with other edgecast customers - so your content will be removed from the edge if it is not requested frequently enough.  Dedicated Edge means dedicated storage on each edge node.  Only use a dedicated edge option if you have dedicated edge facility on your EdgeCast account.
+	 *
+	 * @param integer $mode Storage mode
+	 * @return void
+	 */
+	public function setStoreMode($mode) {
+		$this->_storemode = $mode;
+	}
+
+
+	/**
+	 * Clear a previously-set Cutomer Origin host
+	 *
+	 * @see setOrigin
+	 * @return void
+	 */
+	public function clearOrigin() {
+		$this->_origin = "";
+	}
+
+	/**
+	 * Causes EdgecastAPI to populate the lastrequest and lastresponse properties on each call to the EdgeCast API.
+	 *
+	 * Turns on trace mode in the PHP SOAP Client.  Use when debugging.  Turn off for production use.
+	 *
+	 * @param boolean $val New value (default true)
+	 * @return void
+	 */
+	public function useTraceMode($val=true) {
+		$this->_enabletrace = $val;
+	}
+
+	/**
+	 * Purge a file or directory tree from the Edge
+	 *
+	 * @param string  $path      Path to file or directory to purge.  If a directory, append a trailing slash.  Purges may take several minutes, and this method will error if a purge of the specified item is already in progress.
+	 * @param integer $mediatype One of Edgecast's media types, for which see the constants MEDIA_HTTP, MEDIA_HTTP_SMALL, MEDIA_FLASH, and MEDIA_WINDOWSMEDIA.  At time of writing, all Assanka's uses of Edgecast are in MEDIA_HTTP (which is the default)
+	 * @return boolean
+	 */
+	public function purge($path, $mediatype=self::MEDIA_HTTP) {
+		if (empty($path)) throw new Exception("Path cannot be blank");
+		$path = "http://".$this->_edgehost."/".$this->_storemode.$this->_customerid.$this->_origin.$path;
+		$params = array("strPath"=>$path, "intMediaType"=>$mediatype);
+		$op = $this->_callAPI('PurgeFileFromEdge', $params);
+		if ($op === false) return false;
+		if (!isset($op->PurgeFileFromEdgeResult)) throw new AssankaException("Unexpected response from API", 0, null, $op);
+		return ($op->PurgeFileFromEdgeResult == 0) ? true : false;
+	}
+
+	/**
+	 * Load a file to the Edge
+	 *
+	 * // REVIEW:AB:20111002: I'm improving docs while on a plane and I'm not certain this function actually works.  Use with caution, and update this docblock.
+	 * 
+	 * @param string  $path      Request URI of item to load (eg /resources/javascript/head.js)
+	 * @param integer $mediatype One of Edgecast's media types, for which see the constants MEDIA_HTTP, MEDIA_HTTP_SMALL, MEDIA_FLASH, and MEDIA_WINDOWSMEDIA.  At time of writing, all Assanka's uses of Edgecast are in MEDIA_HTTP (which is the default)
+	 * @return boolean
+	 */
+	public function load($path, $mediatype=self::MEDIA_HTTP) {
+		if (empty($path)) throw new Exception("Path cannot be blank");
+		$path = "http://".$this->_edgehost."/".$this->_storemode.$this->_customerid.$this->_origin.$path;
+		$params = array("strPath"=>$path, "intMediaType"=>$mediatype);
+		$op = $this->_callAPI('LoadFileToEdge', $params);
+		if ($op === false) return false;
+		if (!isset($op->LoadFileToEdgeResult)) throw new AssankaException("Unexpected response from API", 0, null, $op);
+		return ($op->LoadFileToEdgeResult == 0) ? true : false;
+	}
+
+	/**
+	 * Apply token authentication to a directory
+	 *
+	 * @param string  $path      Path to which to apply authentication
+	 * @param integer $mediatype One of Edgecast's media types, for which see the constants MEDIA_HTTP, MEDIA_HTTP_SMALL, MEDIA_FLASH, and MEDIA_WINDOWSMEDIA.  At time of writing, all Assanka's uses of Edgecast are in MEDIA_HTTP (which is the default)
+	 * @return boolean
+	 */
+	public function applyTokenAuth($path, $mediatype=self::MEDIA_HTTP) {
+		if (empty($path)) throw new Exception("Path cannot be blank");
+		$path = "/".$this->_storemode.$this->_customerid.$this->_origin.$path;
+		$params = array("strDir"=>$path, "intMediaType"=>$mediatype);
+		$op = $this->_callAPI('TokenDirAdd', $params);
+		if ($op === false) return false;
+		if (!isset($op->TokenDirAddResult)) throw new AssankaException("Unexpected response from API", 0, null, $op);
+		return ($op->TokenDirAddResult == 0) ? true : false;
+	}
+
+	/**
+	 * Generate an access token for token-protected directories
+	 *
+	 * @param string $key  Currently undocumented
+	 * @param array  $args Currently undocumented
+	 * @return string
+	 */
+	public function getToken($key, $args) {
+		$params = array("strKey"=>$path, "strArgs"=>$args);
+		$op = $this->_callAPI('TokenEncrypt', $params);
+		if ($op === false) return false;
+		if (!isset($op->TokenEncryptResult)) throw new AssankaException("Unexpected response from API", 0, null, $op);
+		return $op->TokenEncryptResult;
+	}
+
+	/**
+	 * Set a new key for generation of tokens
+	 *
+	 * @param string  $key       Currently undocumented
+	 * @param integer $mediatype One of Edgecast's media types, for which see the constants MEDIA_HTTP, MEDIA_HTTP_SMALL, MEDIA_FLASH, and MEDIA_WINDOWSMEDIA.  At time of writing, all Assanka's uses of Edgecast are in MEDIA_HTTP (which is the default)
+	 * @return boolean
+	 */
+	public function updateTokenKey($key, $mediatype=self::MEDIA_HTTP) {
+		$params = array("strKey"=>$path, "intMediaType"=>$mediatype);
+		$op = $this->_callAPI('TokenKeyUpdate', $params);
+		if ($op === false) return false;
+		if (!isset($op->TokenKeyUpdateResult)) throw new AssankaException("Unexpected response from API", 0, null, $op);
+		return ($op->TokenDirAddResult == 0) ? true : false;
+	}
+
+	/**
+	 * Call the EdgeCast SOAP API
+	 *
+	 * @param string $method Name of SOAP method to call
+	 * @param array  $params Array of request parameters
+	 * @return object
+	 */
+	private function _callAPI($method, $params=array()) {
+		$params += array("strCredential"=>$this->_credential, "strCustomerId"=>$this->_customerid);
+		if (empty($this->_endpoints[$method])) throw new AssankaException("No known endpoint for this method", 0, null, $method);
+		$sc =& $this->_clients[$this->_endpoints[$method]];
+		if (empty($sc)) {
+			$opts = array();
+			if ($this->_enabletrace) $opts['trace'] = 1;
+			$sc = new SoapClient($this->_wsdl[$this->_endpoints[$method]], $opts);
+		}
+		try {
+			$op = $sc->$method($params);
+		} catch(SoapFault $err) {
+			return $err->faultstring;
+		}
+		if ($this->_enabletrace) {
+			$this->lastrequest = $sc->__getLastRequest();
+			$this->lastresponse = $sc->__getLastResponse();
+		}
+		return $op;
+	}
+}
+
+if (!class_exists('EdgecastAPI')) class_alias('EdgecastAPIV1', 'EdgecastAPI');

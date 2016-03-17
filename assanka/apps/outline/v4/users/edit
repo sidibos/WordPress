@@ -1,0 +1,132 @@
+<?php
+/*
+########################################################
+This page allows administration of a single user in order
+to edit their outline permissions; this is done by means
+of an arbitary number of folder/permission settings.
+
+Accepted Inputs:
+(GET) id - htaccess username of user to edit.
+
+18/05/2005
+Rowan Beentje
+Assanka Ltd
+########################################################
+*/
+
+require_once("../lib/inc/global");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+// Check permissions, error if none
+$auth->checkRights("outline.administrator");
+
+// Check the id (htaccessuser) supplied is valid, using it to get the name
+if (empty($_REQUEST["id"])) $page->redirect("users/");
+$userdetails = $auth->getDetailsForUser($_REQUEST["id"]);
+if (!$userdetails) trigger_error("Expected variable id not matched to a valid username", E_USER_ERROR);
+
+// Process a POST request if present
+if ($_POST) {
+	$db->query("DELETE FROM out_permissions WHERE htaccessuser='".$db->sqlenc($_REQUEST["id"])."'");
+
+	// If all entries have been deleted, return to the index.
+	if (!is_array($_POST["tag"])) {
+		$page->alert("Permissions returned to default level of full access.", "done");
+	
+	// Otherwise step through the submitted arrays, creating new rows for each
+	} else {
+		for ($i=0; $i<count($_POST["tag"]); $i++) {
+		
+			// Ensure we're not inserting duplicate rows
+			if (!$db->querySingle("SELECT htaccessuser FROM out_permissions WHERE htaccessuser='".$db->sqlenc($_REQUEST["id"])."' AND tag='".$db->sqlenc($_POST["tag"][$i])."' AND role='".$db->sqlenc($_POST["perms"][$i])."' AND siteid='".$db->sqlenc($_POST["site"][$i])."'")) {
+				$db->query("INSERT INTO out_permissions SET htaccessuser='".$db->sqlenc($_REQUEST["id"])."', tag='".$db->sqlenc($_POST["tag"][$i])."', role='".$db->sqlenc($_POST["perms"][$i])."', siteid='".$db->sqlenc($_POST["site"][$i])."'");
+			}
+		}
+		$page->alert("Permissions saved.", "done");
+	}
+
+	$page->redirect("users/");
+}
+
+// Grab the number of sites, using it to control sites display
+$multiSite = false;
+$siteResult = $db->querySingle("SELECT id, name FROM out_sites ORDER BY id ASC");
+if ($db->getNumResults($siteResult) > 1) $multiSite = true;
+$firstsite = $db->getRow($siteResult);
+
+// Grab the permissions for this user
+$result = $db->query("SELECT p.tag, p.role, p.siteid, s.name FROM out_permissions p LEFT JOIN out_sites s ON p.siteid=s.id WHERE htaccessuser='".$db->sqlenc($_REQUEST["id"])."' ORDER BY p.siteid, p.tag");
+$permissions = array();
+
+// If rows are present, build a tag/role array using them
+if ($db->getNumResults($result)) {
+	while ($row = $db->getRow($result)) {
+		$permissions[] = $row;
+	}
+
+// If no rows, that's equivalent to a publisher access for everything
+} else {
+	$permissions[] = array("tag"=>"", "role"=>"publisher", "siteid"=>"-1", "name"=>"All sites");
+}
+
+$page->add("content", "<h4 style=\"margin-top: 0px\">Outline permissions for ".(empty($userdetails["displayname"])?$_REQUEST["id"]:$userdetails["displayname"])."</h4>");
+$page->add("content", "<script type=\"text/javascript\">olhandler = new OutlineHandler('permissions');</script>");
+
+// Output all the current permissions
+$count = 0;
+$page->add("content", "<form action=\"users/edit\" method=\"post\" name=\"frmeditusers\"><div id=\"permissionsdiv\"><input type=\"hidden\" name=\"id\" value=\"".$_REQUEST["id"]."\" />");
+foreach ($permissions as $permission) {
+	if ($permission["tag"] == "homepage") $permission["tag"] = "";
+	outlineUsersOutputPermissionDiv(++$count, $permission["tag"], $permission["role"], $permission["siteid"], $permission["name"], $multiSite);
+	$page->add("content", "<script type=\"text/javascript\">$(document).ready(function() { outlineMakeBrowseField($('#visibletag".$count."').get(0), 'permissions', $('#tag".$count."').get(0), $('#site".$count."').get(0), '".$count."'); });</script>");
+
+}
+$page->add("content", "</div></form><div class=\"paddedcontent\"><a href=\"javascript:void(0);\" onclick=\"userrows.addLoc(this);\" accesskey=\"a\"><span style=\"text-decoration: underline;\">A</span>dd another permission location/level for this user</a></div>");
+
+// Output the dummy div for use by javascript, and the appropriate javascript
+outlineUsersOutputPermissionDiv("nnn", $permission["tag"], $permission["role"], $permission["siteid"], $permission["name"], $multiSite, true);
+$page->add("rightnav", "<script type=\"text/javascript\">userrows = new outlineUsersHandler();</script>");
+
+$page->addAction("Save", array("javascript"=>"document.frmeditusers.submit()"));
+$page->addAction("Cancel", "users/");
+$page->set("title", "Edit user");
+
+$page->outputHTML();
+exit;
+
+// This function outputs one of the location/permission divs.
+function outlineUsersOutputPermissionDiv($id, $tag, $role, $siteid, $sitename, $multiSite, $jsdummy = false) {
+	global $page;
+
+	$accesslevels = array("no access", "author", "publisher");
+	$permissionoptions = "";
+	foreach ($accesslevels as $accesslevel) {
+		$permissionoptions .= "<option value=\"".$accesslevel."\"".(($role == $accesslevel)?" selected=\"selected\"":"").">".ucfirst($accesslevel)."</option>";
+	}
+	
+	if (!$siteid) {
+		$siteid = -1;
+		$sitename = "All Sites";
+	}
+	
+	$page->set("id", $id);
+	$page->set("tag", $tag);
+	$page->set("siteid", $siteid);
+	$page->set("sitename", $sitename);
+	$page->set("permoptions", $permissionoptions);
+	$page->set("multisitedisplay", (($multiSite)?"block":"none"));
+	
+	if ($jsdummy) {
+		$page->add("rightnav", "<div style=\"display: none;\">".$page->render("../lib/tem/userpermissionrow")."</div>");
+	} else {
+		$page->add("content", $page->render("../lib/tem/userpermissionrow"));
+	}
+}
+?>

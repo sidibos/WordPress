@@ -1,0 +1,23 @@
+<br /><br /><br />
+
+<form action="viewdiff" method="post" name="dummyform">
+	<table width="98%" border=0 cellpadding=0 cellspacing="4px">
+		<tr>
+			<td width="50%"><input id="rev1button" type="button" style="width: 100%;" onclick="document.getElementById('revision2').style.display='none'; document.getElementById('revision1').style.display='block'; document.getElementById('rev1button').disabled=true; document.getElementById('rev2button').disabled=false;" value="View --revision1title--"></td>
+			<td width="50%"><input id="rev2button" type="button" style="width: 100%;" onclick="document.getElementById('revision1').style.display='none'; document.getElementById('revision2').style.display='block'; document.getElementById('rev1button').disabled=false; document.getElementById('rev2button').disabled=true;" value="View --revision2title--" disabled></td>
+		</tr>
+	</table>
+</form>
+
+<div id="revision1" style="display: none;">
+	<h4 style="margin-top: 0px;">Viewing --revision1title--</h4>
+	<div style="text-align: center; width: 100%;">
+		<iframe src="viewdiffecho?id=--revision1id--" style="width: 775px; height: 800px; border: 1px dashed #555555; margin: 20px auto 20px auto;"> &nbsp; </iframe>
+	</div>
+</div>
+<div id="revision2">
+	<h4 style="margin-top: 0px;">Viewing --revision2title--</h4>
+	<div style="text-align: center; width: 100%;">
+		<iframe src="viewdiffecho?id=--revision2id--" style="width: 775px; height: 800px; border: 1px dashed #555555; margin: 20px auto 20px auto;"> &nbsp; </iframe>
+	</div>
+</div>

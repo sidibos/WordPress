@@ -1,0 +1,49 @@
+<?php
+require_once("../appglobal");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+
+if (empty($_SESSION["support"])) {
+	$page->add("content", $page->render("../html/error-support-disabled"));
+	$page->set("title", "Support");
+	$page->outputHTML();
+	exit;
+
+}
+
+// Load user's settings
+$opts = array("trivial","minor","normal","major","critical");
+$user = $sdb->queryRow("SELECT *, displayname AS name FROM users WHERE id=".$_SESSION["support"]["userid"]);
+$user["emailnotifyopts"] = "";
+foreach ($opts as $opt) {
+	$user["emailnotifyopts"] .= "<option value=\"".$opt."\"";
+	if ($user["emailnotifylevel"] == $opt) $user["emailnotifyopts"] .= " selected=\"selected\"";
+	$user["emailnotifyopts"] .= " />".$opt."</option>";
+}
+$user["smsnotifyopts"] = "";
+foreach($opts as $opt) {
+	$user["smsnotifyopts"] .= "<option value=\"".$opt."\"";
+	if ($user["smsnotifylevel"] == $opt) $user["smsnotifyopts"] .= " selected=\"selected\"";
+	$user["smsnotifyopts"] .= " />".$opt."</option>";
+}
+$page->add($user);
+
+
+// Spool out the main page information
+$page->add("content", $page->render("../html/support-information"));	
+
+// Output the request support link, and information.
+$page->add("rightnav", $page->render("../html/support-information-sidebar"));
+
+// And finally render the page
+$page->set("title", "Getting Started with Support");
+$page->outputHTML();
+
+?>

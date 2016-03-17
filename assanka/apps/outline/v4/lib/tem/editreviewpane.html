@@ -1,0 +1,56 @@
+<script language="javascript">
+	var theTimer = null;
+	var timerDelay = 25;
+	var targetWidth = 210;
+	var currentWidth = 0;
+	var opening = true;
+	
+	function outlineToggleReviewPane(action, sendforreview) {
+		document.getElementById('revdivinner').style.height=(parseInt(document.getElementById('rightpanel').clientHeight))+'px';
+		targetWidth=(parseInt(document.getElementById('rightpanel').clientWidth));
+		theDiv = document.getElementById('revdiv');
+		theTimer = null;
+		opening = action;
+		if (action) {
+			document.getElementById('reviewspan').style.display = (sendforreview)?'inline':'none';
+			document.getElementById('returnspan').style.display = (sendforreview)?'none':'inline';
+			document.getElementById('panesubmit').value = (sendforreview)?'Send':'Return';
+		}
+		theDiv.style.display='block';
+		theTimer = setTimeout("outlineAnimatePane()", timerDelay);
+	}
+					
+	function outlineAnimatePane() {
+		theDiv = document.getElementById('revdiv');
+		currentWidth = parseInt(theDiv.style.width);
+		if (opening) {
+			theDiv.style.width = (currentWidth + Math.ceil((targetWidth - currentWidth)/4) + 0)+'px';
+			if ((currentWidth + Math.ceil((targetWidth - currentWidth)/6) + 1) > targetWidth) theDiv.style.width = targetWidth+'px';
+			if (parseInt(theDiv.style.width) < targetWidth) theTimer = setTimeout("outlineAnimatePane()", timerDelay);
+		} else {
+			if (Math.floor((currentWidth/1.25) - 1) < 0) theDiv.style.width=0+'px';
+			else theDiv.style.width = Math.floor((currentWidth/1.25) - 1)+'px';
+			if (parseInt(theDiv.style.width) > 0) theTimer = setTimeout("outlineAnimatePane()", timerDelay);
+			else theDiv.style.display='none';
+		}
+		theDiv.style.right = '0px';
+	}
+</script>
+<div id="revdiv" style="display: none; width: 0px; background-color: #E4E4E4; float: right; z-index:100; position:absolute; top: 119px; right: 0px; overflow: hidden; padding: 0px; margin: 0px;">
+<div style="width: 200px; padding: 0; margin: 0;">
+<div id="revdivinner" style="width: 100%; padding: 0px 0px 0px 10px; margin: 0px;">
+<span id="reviewspan">
+<h3 style="margin-left: -10px; margin-top: 0px;">Send for Review</h3><p style="margin-right:10px; font-size:12px;">Please select which administrator you wish to send this page to:</p>
+<select class="button" id="rightpanereviewuser" name="reviewuser" size="<!--@outlinenumreviewusers-->" style="width:180px;" onchange="if (document.getElementById('rightpanereviewuser').selectedIndex != -1) { if (document.getElementById('rightpanereviewuser').options[document.getElementById('rightpanereviewuser').selectedIndex].className=='email') { document.getElementById('emailcheck').disabled = false; document.getElementById('emailtext').style.color='black'; } else { document.getElementById('emailcheck').disabled = true; document.getElementById('emailtext').style.color='gray'; }}">
+	<!--@outlinereviewusers-->
+</select>
+<p style="margin-right:10px; font-size:12px;">Add an optional comment for the administrator:</p>
+</span>
+<span id="returnspan">
+<h3 style="margin-left: -10px; margin-top: 0px;">Return Draft</h3><p style="margin-right:10px; font-size:12px;">Please enter any comments or feedback for <!--@outlinereviewreturnname-->:</p>
+</span>
+<textarea id="commenttextarea" style="margin-right: 10px; font: 12px 'arial', 'sans-serif'; width: 180px; height: 100px;"></textarea><br /><br />
+<input type="checkbox" name="email" value="yes" disabled="true" id="emailcheck" checked="true"><label for="emailcheck" id="emailtext" style="color: gray;">Send notification email</label><br /><br />
+<input class="button" id="panesubmit" type="button" onclick="document.getElementById('frmeditpage_submitaction').value=document.getElementById('panesubmit').value; if(document.getElementById('emailcheck').checked == true) { document.getElementById('frmeditpage_email').value='yes'; } else { document.getElementById('frmeditpage_email').value=''; } if (document.getElementById('rightpanereviewuser').selectedIndex != -1) document.getElementById('frmeditpage_reviewuser').value=document.getElementById('rightpanereviewuser').options[document.getElementById('rightpanereviewuser').selectedIndex].value; document.getElementById('frmeditpage_comment').value=document.getElementById('commenttextarea').value; if ((document.getElementById('rightpanereviewuser').selectedIndex > -1) || (document.getElementById('panesubmit').value == 'Return')) { document.frmeditpage.submit(); } else { alert('Please select a user to send this version to.'); }" value="Send">
+<input class="button" type="button" onclick="outlineToggleReviewPane(false);" value="Cancel">
+</div></div></div>

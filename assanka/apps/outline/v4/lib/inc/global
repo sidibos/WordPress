@@ -1,0 +1,86 @@
+<?php
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+
+require_once($_SERVER['CORE_PATH']."/helpers/database/mysql/v3/mysql");
+require_once($_SERVER['CORE_PATH']."/helpers/adminwidgets/datatable/v1/datatable");
+require_once($_SERVER['CORE_PATH']."/helpers/adminforms/v1/forms");
+
+require_once("functions");
+
+// To access Outline, the user must be logged in and have some rights
+$auth->checkRights("outline.*");
+
+// Ensure that a session is present
+if (!session_id()) session_start();
+
+// If there is no session cache, establish information about this Outline installation
+if (!empty($_GET["updatecaches"]) or empty($_SESSION["outline"]) or !empty($_GET["siteid"])) {
+	
+	// Select the feature settings
+
+	$features = $db->query("SELECT name, value FROM out_settings WHERE name LIKE %s", 'features.%');
+
+	if (!$db->getNumResults($features)) trigger_error("Outline settings for features not found - features entries in out_settings required", E_USER_ERROR);
+	$_SESSION["outline"]["features"] = array();
+	while ($feature = $db->getRow($features)) {
+		$parts = explode(".", $feature["name"]);
+		$_SESSION["outline"]["features"][end($parts)] = $feature["value"];
+	}
+	
+	// Determine how many sites exist in the tables for this project
+	$result = $db->query("SELECT id, name, webroot, hostname FROM out_sites ORDER BY id ASC");
+	if (!$db->getNumResults()) {
+		trigger_error("This Outline installation has no sites present.", E_USER_ERROR);
+	} else if (($db->getNumResults() == 1) or !outlineIsFunctionalityEnabled("multiplesites")) {
+		$row = $db->getRow();
+		if (!empty($row["hostname"]) and strpos($row["hostname"], "://") === false) $row["hostname"] = "http://".$row["hostname"];
+		$_SESSION["outline"]["sites"] = array($row["id"]=>$row);
+		$_SESSION["outline"]["currentsite"] = $row["id"];
+		if (empty($_SESSION["outline"]["currentsiteid"])) $_SESSION["outline"]["currentsiteid"] = $row["id"];
+	} else {
+		$sites = array();
+		$currentsite = false;
+		while ($row = $db->getRow($result)) {
+			if (!empty($row["hostname"]) and strpos($row["hostname"], "://") === false) $row["hostname"] = "http://".$row["hostname"];
+			if ($currentsite === false) $currentsite = $row["id"];
+			if ($_GET["siteid"] == $row["id"]) $currentsite = $row["id"];
+			
+			if (empty($_SESSION["outline"]["currentsiteid"])) $_SESSION["outline"]["currentsiteid"] = $row["id"];
+			if ($_GET["siteid"] == $row["id"]) $_SESSION["outline"]["currentsiteid"] = $row["id"];
+			
+			$sites[$row["id"]] = $row;
+		}
+		$_SESSION["outline"]["sites"] = $sites;
+		$_SESSION["outline"]["currentsite"] = $currentsite;
+	}
+	$_SESSION["outline"]["lastpage"] = "";
+	
+	// TODO:RB:20080114: Languages need to be implemented at some point.
+	$_SESSION["outline"]["language"] = "en";
+}
+
+// Mark the user in the session for use on the public site
+if (!isset($_SESSION["outline"]["adminuser"])) $_SESSION["outline"]["adminuser"] = $auth->user["username"];
+
+// TODO:RB: 20080116: This can now be overridden on a per-file basis, or set according to the current file
+$page->set("userarea", "<a href=\"".((!empty($_SESSION["outline"]["currentsite"]) and !empty($_SESSION["outline"]["sites"][$_SESSION["outline"]["currentsite"]]["hostname"]))?$_SESSION["outline"]["sites"][$_SESSION["outline"]["currentsite"]]["hostname"]:$_SERVER["SERVER_NAME"])."\" id=\"outlinepublicsitelink\">Switch to public site</a><br />");
+
+// Add the page sections
+$page->addSubsection("Pages", "pages");	
+if (outlineIsFunctionalityEnabled("assets")) $page->addSubsection("Assets", "assets");	
+if (outlineIsFunctionalityEnabled("taskdashboard")) $page->addSubsection("My Tasks", "tasks");	
+if (outlineIsFunctionalityEnabled("multipleusers") and $auth->checkRights("outline.administrator", false)) $page->addSubsection("User Permissions", "users");
+
+// Add section javascript and CSS
+$page->add("screenstyleincludes", "lib/css/outline");
+$page->add("jsincludes", "lib/js/outline");
+?>

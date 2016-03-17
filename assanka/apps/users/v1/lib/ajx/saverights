@@ -1,0 +1,18 @@
+<?php
+
+require_once("../../appglobal");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+$user = $auth->getDetailsForUser($_POST["username"]);
+if ($user===false) exit("Error (user not found)");
+
+$auth->setRights($_POST["rights"], $_POST["username"]);
+?>
+OK

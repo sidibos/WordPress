@@ -1,0 +1,87 @@
+#!/usr/bin/php
+<?php
+/**
+ * Send messages from the assanka-mail queue to Mailgun
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/daemon/v2/daemon';
+require_once $_SERVER['CORE_PATH'].'/helpers/http/HTTPRequest';
+require_once $_SERVER['CORE_PATH'].'/helpers/messaging/beanstalk/v2/beanstalk';
+
+// Daemonise the process
+$d = new DaemonV2(array(
+	'maxinstances' => 4,
+	'startingdaemoninstances' => 1,
+	'name'         => 'mailgun-dispatcher',
+	'description'  => 'Dispatches queued outbound mail via the Mailgun API',
+));
+
+$l = new AssankaLoggerV1('mailgun-dispatcher');
+$l->setLogMethod('file');
+$l->write('process started');
+
+$starttime = time();
+$runtime = 7200; // Two hours
+
+$bs = new BeanstalkPoolV2();
+$bs->watch('assanka-mailgun');
+$timeout = 30;
+while (true) {
+	try {
+		while ($job = $bs->reserve($timeout)) {
+			$log = 'type:job job:'.$job->getID().' host:'.$job->getConn()->getHost().' size:'.strlen($job->getBody());
+			$email = json_decode($job->getBody(), true);
+
+			$http = new HTTPRequest('https://api.mailgun.net/v2/t.ft.com/messages.mime');
+			$http->setMethod('POST');
+			$http->setBasicAuth('api','key-4421nroj7_779$yoq2');
+
+			$file = tempnam('/tmp', 'maildispatcher');
+			file_put_contents($file, $email['msg']);
+			$http->setPostEncoding('multipart');
+			$http->set('to', $email['to']);
+			$http->set('message', '@'.$file);
+
+			$log .= ' pid:'.getmypid().' from:'.$email['from'].' to:'.$email['to'];
+			try {
+				$resp = $http->send();
+				if ($resp->getResponseStatusCode() == 200) {
+					$l->write($log.' status:ok lag:'.round(microtime(true) - $email['queueddate'],2));
+					$job->delete();
+				} else {
+					$l->write($log.' status:http_'.$resp->getResponseStatusCode());
+					$job->bury();
+				}
+				unset($http);
+				if (file_exists($file) and is_writable($file)) unlink($file);
+			} catch (Exception $e) {
+				if ($e instanceof BeanstalkProtocolException) throw $e;
+				$l->write($log.' status:exception exception:"'.$e->getMessage().'"');
+				$numresserves = $job->stats('reserves');
+				$tmperrors = array(
+					"Failure executing cURL command: couldn't connect to host",
+					"HTTP request timed out"
+				);
+				if (in_array($e->getMessage(), $tmperrors) and $numreserves < 5) {
+					$job->release(10000, 60 * (pow(2, $numreserves)));
+				} else {
+					$job->bury();
+				}
+			}
+			unset($job);
+		}
+
+		// Only allow each instance to run for a finite period to avoid any unintentional memory leaks
+		if (time() > $starttime + $runtime) exit;
+
+		$l->write('type:beantimeout pid:'.getmypid().' mem:'.memory_get_usage());
+	} catch (BeanstalkProtocolException $e) {
+		$log = 'type:beanerror pid:'.getmypid().' exception:';
+		$log .= '"'.(($e->getMessage() == 'Protocol error') ? $e->getContext() : $e->getMessage()).'"';
+		$l->write($log);
+		sleep(60);
+	}
+}

@@ -1,0 +1,38 @@
+<?php
+/**
+ * Returns the potential support request authors associated with a
+ * supplied project code.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */ 
+
+require_once("../../appglobal");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+// Verify that a valid project code was supplied
+if (empty($_GET["projectcode"])) {
+	exit("{'error':'A script error occurred and authors for this project could not be retrieved because the project could not be identified.'}");
+}
+
+// Look up the selected project, ensuring the current support user has access.
+$project = $sdb->queryRow("SELECT client, project, supportpkg FROM projects ". (($_SESSION["support"]["permissions"]) ? "WHERE (".$_SESSION["support"]["permissions"].") AND ":" WHERE ") . "CONCAT(client, '-', project)='".$sdb->sqlenc($_GET["projectcode"])."'");
+if (!$project) {
+	exit("{'error':'A script error occurred and authors for this project could not be retrieved because the project could not be accessed.'}");
+}
+
+// Get a list of the people with access to this project
+$users = array();
+$result = $sdb->query("SELECT u.displayname AS name FROM permissions p INNER JOIN users u ON p.userid=u.id WHERE u.displayname != 'Assanka' AND (p.client IS NULL OR (p.client = '".$sdb->sqlenc($project["client"])."' AND (p.project IS NULL OR p.project = '".$sdb->sqlenc($project["project"])."'))) GROUP BY u.displayname ORDER BY u.displayname ASC");
+while ($user = $sdb->getRow($result)) {
+	$users[] = $user;
+}
+
+echo json_encode($users);
+?>

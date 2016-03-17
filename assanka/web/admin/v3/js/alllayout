@@ -1,0 +1,33 @@
+<?php
+	$javascriptlocations = $_SERVER["CORE_PATH"]."/web/admin/v3/js/";
+	$javascriptfiles = array($javascriptlocations."activetable", $javascriptlocations."autocomplete.js", $javascriptlocations."colorpicker", $javascriptlocations."eventview.js", $javascriptlocations."imagepreview.js", $javascriptlocations."inarray.js", $javascriptlocations."sortabletable", $javascriptlocations."standard", $javascriptlocations."uploader", $_SERVER["CORE_PATH"]."/web/fckeditor/v2.5/fckeditor.js");
+	if (file_exists($_SERVER["DOCUMENT_ROOT"]."/lib/js/admin.js")) {
+		$javascriptfiles[] = $_SERVER["DOCUMENT_ROOT"]."/lib/js/admin.js";
+	}
+
+	// Find the most recent filemtime to be able to send a last-modified if appropriate
+	$modtime = 0;
+	foreach ($javascriptfiles as $file) {
+		$modtime = max($modtime, filemtime($file));
+	}
+	
+	// Check if the files have or haven't been modified and if we can just return a 304 header
+	$headers = apache_request_headers();
+	if (isset($headers["If-Modified-Since"]) && (strtotime($headers["If-Modified-Since"]) == $modtime)) {
+		header("Last-Modified: ".gmdate("D, d M Y H:i:s", $modtime)." GMT", true, 304);
+		exit();
+	}
+	
+	// Otherwise return javascript headers and read in the files
+	header("Content-type: text/javascript");
+	$offset = 60 * 60 * 24 * 3;
+	header("Cache-Control: max-age=".$offset);
+	header("Expires: " . gmdate("D, d M Y H:i:s", time() + $offset) . " GMT");
+	header("Last-Modified: ".gmdate("D, d M Y H:i:s", $modtime)." GMT");
+
+	$jsdirectaccess = true;
+	
+	foreach ($javascriptfiles as $file) {
+		include($file);
+	}
+?>

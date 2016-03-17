@@ -1,0 +1,48 @@
+<?php
+/**
+ * Disable a CMS page - for use with the outline toolbar
+ *
+ * Accepted Inputs: (GET) id: localcontentid of the item to disable
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once("../lib/inc/global");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+$auth->checkRights("outline.user");
+
+if (empty($_GET["id"]) or !is_numeric($_GET["id"])) trigger_error("Expected variable id not supplied or non numeric", E_USER_ERROR);
+
+// Check whether the user has the rights to disable pages
+$content = $db->queryRow("SELECT tag, siteid FROM out_localcontent l LEFT JOIN out_items i ON l.itemid=i.id WHERE l.id=".$_GET["id"]);
+outlineCheckIfAuth("disablepage", $content["tag"], $auth->user["username"], true, $content["siteid"]);
+
+// Save the location of this page for redisplay of index
+outlineSaveLastSelectedPage($content["tag"]);
+
+// Grab details and mark versions as being disabled in the action log
+$result = $db->query("SELECT v.id, i.id AS theitemid FROM out_items i LEFT JOIN out_localcontent l ON i.id=l.itemid LEFT JOIN out_versions v ON l.id=v.localcontentid WHERE l.id=".$_GET["id"]." AND islive=1");
+while ($rec = $db->getRow($result)) {
+	$db->query("INSERT INTO out_actionlog SET versionid=".$rec["id"].", user='".$auth->user["username"]."', actiontype='disable', comment='', date=NOW()");
+	$itemID = $rec["theitemid"];
+}
+
+// Perform a recursive delete of the entire cache affected by links
+outlineDeleteCache($content["siteid"]);
+
+// Disable the page itself
+$db->query("UPDATE out_items SET visibility='inaccessible' WHERE id=".$itemID);
+
+if ($db->getRowsAffected()) {
+	$page->redirectAndAlert("Page disabled successfully.", "done", "pages/");
+} else {
+	trigger_error("Unexpected result", E_USER_ERROR);
+}
+?>

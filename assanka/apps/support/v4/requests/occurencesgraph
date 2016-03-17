@@ -1,0 +1,66 @@
+<?php
+require_once("../appglobal");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+include ($_SERVER["CORE_PATH"]."/web/jpgraph/2.3/jpgraph.php");
+include ($_SERVER["CORE_PATH"]."/web/jpgraph/2.3/jpgraph_bar.php");
+include ($_SERVER["CORE_PATH"]."/web/jpgraph/2.3/jpgraph_log.php");
+
+ErrorHandlerV5::setActionTriggers('stop', E_ALL ^ (E_NOTICE | E_DEPRECATED));
+
+if (!$_GET["id"] || !is_numeric($_GET["id"])) trigger_error("Expected input variable id not supplied", E_USER_ERROR);
+
+// Determine which hostname to show, defaulting to all hosts (total)
+if (empty($_GET["showhost"]) or $_GET["showhost"] == "total") {
+	$hostwhere = "";
+} else {
+	$hostwhere = " AND hostname".(($_GET["showhost"] == "Unknown")?" IS NULL":"='".$sdb->sqlenc($_GET["showhost"])."'");
+}
+
+// Retrieve occurence data
+$sdb->query("SELECT DATE_FORMAT(occdate, '%j') as day, COUNT(*) as count FROM occurences WHERE occdate >= (NOW() - INTERVAL 60 DAY) AND requestid=".$_GET["id"].$hostwhere." GROUP BY day ORDER BY occdate");
+$occs = array();
+while ($row = $sdb->getRow()) $occs[($row["day"]-0)] = $row["count"]+1;
+
+// Build data arrays
+$datax = array();
+$datay = array();
+for ($i=-60; $i<=0; $i++) {
+	$daytime = mktime(12,0,0,date("m"),(date("j")+$i),date("Y"));
+	$daynum = date("z", $daytime) + 1;  // Note: MySQL 'day of year' starts from 1, PHP starts from 0
+	$datax[] = date("j M", $daytime);
+	$datay[] = (isset($occs[$daynum]) and $occs[$daynum] > 1) ? $occs[$daynum] : 0;
+}
+
+// Create the graph.
+$graph = new Graph(400,90,"auto");	
+$graph->SetScale("textlog");
+$graph->xaxis->SetTextLabelInterval(18);
+
+// Create the plot
+$plot=new BarPlot($datay);
+$plot->SetFillColor("#B00003");
+
+// Add the plot to the graph
+$graph->Add($plot);
+
+$graph->xaxis->SetTickLabels($datax);
+$graph->img->SetMargin(35,15,5,20);
+$graph->SetFrame(true, "#F0F0F0", 1);
+$graph->SetMarginColor("white");
+$graph->yaxis->scale->SetGrace(10,0);
+$graph->yaxis->HideZeroLabel(); 
+$graph->yaxis->SetFont(FF_ARIAL, FS_NORMAL, 7);
+$graph->xaxis->HideFirstTicklabel();
+$graph->xaxis->SetFont(FF_ARIAL, FS_NORMAL, 7);
+
+// Display the graph
+$graph->Stroke();
+?>

@@ -1,0 +1,873 @@
+<?php
+/**
+ * Assanka Database connector
+ *
+ * Provides a database connection to a mySQL database,
+ * although the specification of this class is common
+ * to all database connectors.
+ *
+ * Public properties are provided that mirror the private
+ * ones so that information can be exposed in a read-only
+ * way.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+class MySqlConnectionV3 {
+
+	private $_server, $_username, $_password, $_dbname, $_connectionOpened, $_conn, $_reconnectonfail, $_queries, $_lastqueryresult = false, $_suppresserrors, $_injectionchecking;
+	public  $server, $username, $password, $dbname, $connectionOpened, $reconnectonfail, $queries, $suppresserrors;
+
+	function __construct($server, $username, $password, $dbname) {
+		$this->_server = $this->server = $server;
+		$this->_username = $this->username = $username;
+		$this->_password = $this->password = $password;
+		$this->_dbname = $this->dbname = $dbname;
+		$this->_queries = $this->queries = array();
+		$this->_injectionchecking = true;
+		$this->_suppresserrors = $this->suppresserrors = false;
+		$this->_reconnectonfail = $this->reconnectonfail = false;
+		$this->_connectionOpened = $this->connectionOpened = false;
+	}
+
+	public function enableInjectionChecking() {
+		$this->_injectionchecking = true;
+	}
+
+	public function disableInjectionChecking() {
+		$this->_injectionchecking = false;
+	}
+
+	public function isInjectionCheckingEnabled() {
+		return $this->_injectionchecking;
+	}
+
+	/**
+	 * Connect to MySQL server
+	 *
+	 * Creates a connection using the connection settings defined
+	 * when the MySQLConnection object was created.
+	 *
+	 * @return void
+	 */
+	private function _connect() {
+		$this->_conn = @mysql_connect($this->_server, $this->_username, $this->_password, true, 128);
+		if (!$this->_conn) {
+
+			// Try exactly once more to reconnect, so as to mitigate temporary problems discussed in #15410
+			sleep(1);
+			$this->_conn = @mysql_connect($this->_server, $this->_username, $this->_password, true, 128);
+			if (!$this->_conn) {
+				$lastsqlerror = mysql_error();
+				trigger_error("Database server could not be contacted  eh:noreport eh:hashcode=587CD2E0", E_USER_ERROR);
+				return;
+			}
+		}
+
+		mysql_select_db($this->_dbname, $this->_conn) or trigger_error("Database was not found eh:hashcode=74154CDD", E_USER_ERROR);
+		$this->_query("SET NAMES utf8", $this->_conn);
+		$this->_query("SET AUTOCOMMIT = 1", $this->_conn);
+		$this->_connectionOpened = true;
+		$this->_resyncproperties();
+	}
+
+	/**
+	 * Change database
+	 *
+	 * @param string $dbname Name of database to select
+	 * @return void
+	 */
+	public function changeDatabase($dbname) {
+		$this->_dbname = $dbname;
+		if ($this->_connectionOpened) {
+			mysql_select_db($dbname, $this->_conn) or trigger_error("Database was not found eh:hashcode=74154CDD", E_USER_ERROR);
+		} else {
+			$this->_connect();
+		}
+		$this->_resyncproperties();
+	}
+
+	/**
+	 * Construct a complete query from a prepared statement
+	 *
+	 * @param string $query  Prepared statement to parse
+	 * @param array  $params Optional associative array of data, keys must correspond to keys specified in query, which must in turn match the columns in the database table.  Values can be any form of scalar value, or the string 'null'.
+	 * @return string Complete query
+	 */
+	public function parseStatement($query, $params=false) {
+
+		// Prepare keys
+		$keys = array();
+		foreach ($params as $key => $value) {
+			$keys[] = preg_quote($key, '/');
+		}
+
+		// Look for markers followed by an even number of unescaped quotes
+		// REVIEW:WV:20101117:This code looks completely unused.  Is it part
+		// of an unfinished bug-fix?
+		$quote =
+			'(?=(?:(?:[^\\\\\']|\\\\.)*\'(?:[^\\\\\']|\\\\.)*\')*[^\']*\z)' .
+			'(?=(?:(?:[^\\\\"]|\\\\.)*"(?:[^\\\\\"]|\\\\.)*\")*[^"]*\z)';
+
+		$pattern = '/(?:\{(' . join('|', $keys) . ')(?:\|([^\s\}]+))?\})/is';
+
+		// Pass params to callback, and then run callback replacer for each occurence
+		$this->_parseStatementCallback(null, $params, $query);
+		return preg_replace_callback($pattern, array(&$this, '_parseStatementCallback'), $query);
+	}
+
+
+	/**
+	 * Construct a complete query from sprintf syntax
+	 *
+	 * Alternative method of constructing a prepared statement, using PHP's sprintf syntax, with appropriate escaping of string values.
+	 *
+	 * @param string $query  SQL query to execute
+	 * @param array  $params Numeric array of data, to be replaced into the query in the order in which the placeholders are encountered
+	 * @return string Complete query
+	 */
+	public function parseSPrintF($query, $params) {
+		static $pattern = false;
+
+		if (!$pattern) {
+			$preboundary = "(\A|(?<=[\,\=\"\'\s\(\<\>]))";
+			$start = "\%?\%";
+			$sign = "\+?";
+			$pad = "(\'(.)|0)?";
+			$align = "\-?";
+			$width = "\d*";
+			$precision = "(\.\d+)?";
+			$type = "([bcdeEufFgGosxX])";
+			$modifier = "(\|(date|utcdate|01|like|list))?";
+			$postboundary = "((?=[\,\=\"\'\s\)])|\Z)";
+			$pattern = "/".$preboundary.$start.$sign.$pad.$align.$width.$precision.$type.$modifier.$postboundary."/";
+		}
+
+		// Pass params to callback and run replacer
+		$this->_parseStatementCallback(null, $params);
+		return preg_replace_callback($pattern, array(&$this, '_parseStatementCallback'), $query);
+	}
+
+
+	/**
+	 * Replacement callback for variable markers in a prepared statement
+	 *
+	 * @param array  $match   A match from the parseStatement or parseSprintF functions' preg_replace_callback function
+	 * @param array  $pParams The array of data to use for the replacements (if supplied, function will simply remember it and then use it in subsequent calls by preg_replace_callback)
+	 * @param string $pQuery  The unparsed query originally passed to parseStatement
+	 *
+	 * @return string Replacement string
+	 */
+	protected function _parseStatementCallback($match, $pParams = null, $pQuery = null) {
+		static $params, $mode, $query;
+
+		// If called to set params, and query, record them in static variables and return
+		if (isset($pParams) or isset($pQuery)) {
+
+			if (isset($pParams)) {
+				$params = array();
+				$mode = 'sprintf';
+				foreach ($pParams as $k=>$v) {
+					if (!is_numeric($k)) $mode = 'bykey';
+					$params[strtolower($k)] = $v;
+				}
+			}
+			if (isset($pQuery)) {
+				$query = $pQuery;
+			}
+			return;
+		}
+
+		// Get value for replacment - either look up key or get next value from list
+		if ($mode == 'bykey') {
+			$key = strtolower($match[1]);
+			if (!array_key_exists($key, $params)) {
+				return $match[0];
+			}
+			$value = $params[$key];
+		} else {
+			$value = (count($params)) ? array_shift($params) : null;
+		}
+
+		if ($mode == 'sprintf' and strpos($match[0], '%%') === 0) return substr($match[0], 1);
+
+		// Find any modifier that might be set in the match
+		$modifier = false;
+		if ($mode == 'sprintf' and !empty($match[7])) $modifier = $match[7];
+		elseif ($mode == 'bykey' and !empty($match[2])) $modifier = $match[2];
+
+
+		/* Convert value to string representation of a native MySQL data type */
+
+		// Using datetime object with utcdate modifier
+		if (($modifier == "utcdate" or $modifier == "nokeyutcdate") and $value instanceOf DateTime) {
+			$fval = $value;
+
+		// Using 'list' modifier
+		} elseif ($modifier == 'list' or $modifier == "nokeylist" and is_array($value)) {
+			$fval = array();
+			foreach ($value as $v) {
+				$fval[] = $this->convertValueToMySQLString($mode, $match, (($mode == "bykey")?$key:null), $v, $query);
+			}
+			$fval = "(".join(",", $fval).")";
+
+		// Not using the list modifier
+		} else {
+			$fval = $this->convertValueToMySQLString($mode, $match, (($mode == "bykey")?$key:null), $value, $query);
+		}
+
+		// Generate the basic replacement for this match
+		if ($mode == "bykey" and !($modifier == "utcdate" or $modifier == "nokeyutcdate")) {
+
+
+			/* REVIEW:RS:20101229:
+			As the statement parser does not currently work out if this is a
+			read or write query (or indeed, acting on the conditional portion of
+			a write query), it is not possible to intelligently use " = NULL" or
+			" IS NULL" for the set / filter portion of the query respectively.
+			This is really hard to fix.  To use NULLs, you will have to use
+			appropriate modifiers / construct the sprintf-style query as necessary.
+			All in all, this is awkward. */
+
+			$op = "`".$key."`=".$fval;
+		} else {
+			$op = $fval;
+		}
+
+
+		/* Alter it as appropriate. according to modifiers */
+
+		// Dates
+		if ($modifier == 'date' or $modifier == 'nokeydate') {
+
+			// Ensure the value is interpreted as a date if not null:
+			if (strtoupper(trim($value)) === "NULL" or $value === null) {
+				$dateval = false;
+			} else {
+				require_once $_SERVER['CORE_PATH'].'/helpers/common/v2/common';
+				$dateval = AssankaCommonV2::convertHumanTime($value);
+			}
+
+			// Convert the date to MySQL format:
+			$op = ($dateval !== false) ? "'".date("Y-m-d H:i:s", $dateval)."'" : "NULL";
+
+			// Prepend the key if necessary:
+			if ($mode == 'bykey' and $modifier != 'nokeydate') $op = "`".$key."`=".$op;
+
+		// UTC Dates
+		} elseif ($modifier == 'utcdate' or $modifier == 'nokeyutcdate') {
+
+			// Ensure the value is interpreted as a date if not null:
+			if ($value === null or $value === false) {
+				$op = "NULL";
+
+			// Convert Human Time doesn't accept DateTimes
+			} elseif ($value instanceOf DateTime) {
+				$value->setTimezone(new DateTimeZone("UTC"));
+				$op = "'".$value->format("Y-m-d H:i:s")."'";
+			} else {
+				require_once $_SERVER['CORE_PATH'].'/helpers/common/v2/common';
+				$timestamp = AssankaCommonV2::convertHumanTime($value);
+				$op = "'".gmdate("Y-m-d H:i:s", $timestamp)."'";
+			}
+
+			// Prepend the key if necessary:
+			if ($mode == 'bykey' and $modifier != 'nokeyutcdate') $op = "`".$key."`=".$op;
+
+		// LIKE clauses
+		} elseif ($modifier == 'like' or $modifier == 'nokeylike') {
+			$op = " LIKE '%".str_replace('%', '\%', $this->sqlenc($value))."%'";
+			if ($mode == 'bykey' and $modifier != 'nokeylike') {
+				$op = "`".$key."`".$op;
+			}
+
+		// No-key list
+		// REVIEW:WV:20101117:How is this different from 'nokey' ?
+		} elseif ($mode == 'bykey' and $modifier == 'nokeylist') {
+			$op = $fval;
+
+		// True/false
+		} elseif ($modifier == '01') {
+			$op = ($value?1:0);
+			if ($mode == 'bykey') {
+				$op = "`".$key."`=".$op;
+			}
+
+		// Others, that only apply to key-based parsing
+		} elseif ($mode == 'bykey') {
+
+			// No key
+			if ($modifier == 'nokey') {
+				$op = $fval;
+
+			// Various relationship operators
+			} elseif ($modifier == 'not') {
+				$op = "`".$key."`<>".$fval;
+			} elseif ($modifier == '>') {
+				$op = "`".$key."`>".$fval;
+			} elseif ($modifier == '>=') {
+				$op = "`".$key."`>=".$fval;
+			} elseif ($modifier == '<') {
+				$op = "`".$key."`<".$fval;
+			} elseif ($modifier == '<=') {
+				$op = "`".$key."`<=".$fval;
+			}
+		}
+		return $op;
+	}
+
+
+	/**
+	 * Convert a value to a string representation of a native MySQL data type
+	 * supposed to be called from within _parseStatementCallback
+	 *
+	 * @param string $mode  'bykey' or 'sprintf'
+	 * @param string $match the array of matches found by preg_match
+	 * @param mixed  $key   the key associated with this value (only relevant in 'bykey' mode; submit 'null' otherwise)
+	 * @param mixed  $value the value to convert
+	 * @param mixed  $query the original query passed to parseStatement, and on to _parseStatementCallback
+	 *
+	 * @return string
+	 */
+	private function convertValueToMySQLString($mode, $match, $key, $value, $query) {
+
+		// If in sprintf-mode, consider whether $value should be treated as a string or a number
+		if ($mode == 'sprintf') {
+			$treatasstring = (strpos("ceEgGxXs", $match[5]) !== false);
+		} elseif ($mode == 'bykey') {
+			$treatasstring = (!empty($match[2]) and $match[2] == 'string');
+		}
+
+		// Remove any modifier from the end of the placeholder
+		$placeholder = preg_replace("/\|[a-z0-9]+$/i", "", $match[0]);
+
+		// Can't use non-scalar values
+		if (!is_scalar($value) and !is_bool($value) and $value !== null) {
+			if ($mode == 'sprintf' or preg_match("/\{".preg_quote($key, "/")."(\|([^\s\}]+))?\}/i", $query)) {
+				trigger_error("Cannot prepare an SQL statement with non-scalar values", E_USER_ERROR);
+			} else {
+				continue;
+			}
+
+		// Null values
+		} elseif (strtoupper(trim($value)) === "NULL" or $value === null) {
+			$fval = "NULL";
+
+		// Boolean values
+		} elseif (is_bool($value)) {
+			$fval = ($value) ? 1:0;
+
+		// Empty strings
+		} elseif (!$value and (($mode == "sprintf" and $treatasstring) or ($mode != "sprintf" and !is_numeric($value)))) {
+			$value = "";
+			$fval = "''";
+
+		// Other strings
+		} elseif ($treatasstring or ($mode != "sprintf" and (!is_numeric($value) or (is_numeric($value) and $value > PHP_INT_MAX) or substr($value, 0, 1) == "0"))) {
+			$fval = "'".$this->sqlenc((($mode == 'sprintf')?sprintf($placeholder, $value):$value))."'";
+
+		// Numbers
+		} else {
+			$fval = (($mode == 'sprintf')?sprintf($placeholder, $value):$value);
+		}
+
+		return $fval;
+	}
+
+
+	/**
+	 * Perform a query
+	 *
+	 * Runs a query on the MySQL server.  Initiates a connection if one is not already present.  Adds query to a query log and returns a unique reference for it.  If you wish to execute your query with no parsing, call query() with one parameter - the query to run.
+	 *
+	 * Two forms of prepared statement are supported.  In the first, placeholders are specified as {key}, where key matches a key in an associative array of data which you pass to query as the second argument.  The keys should also, where possible, match the column names in your database, since a simple {foo} placeholder will become "foo = 'value_of_foo'".  By default, all placeholders written in this form will expand to include a key and an equality/assignment operator.  You can alter this behaviour by using modifiers, which are appended to the placeholder using a pipe, inside the braces, eg {foo|date}.  This form of prepared statement is suitable when you have a keyed array of data, often from a web form, and the keys match the columns in your database.
+	 *
+	 * The second form of prepared statement uses sprintf syntax.  Placeholders look like %s (the full sprintf vocabulary is supported, see http://www.php.net/sprintf for details), but modifiers can be used by appending a pipe and the modifier name, eg, %s|date.  The data for the sprintf prepared statement is passed to query() in the second and subsequent parameters, one value per argument, and are replaced into the query in the order in which they are passed in.  This form of prepared statement is suitable when you have several items of data from different sources that you wish to combine for a single query, or where you wish to take advantage of sprintf functionality.
+	 *
+	 * Both forms of prepared statement support modifiers.  The following are available in both:
+	 *
+	 * * date: Interpret the input as a date and convert it to MySQL date format
+	 * * utcdate: Interpret the input as a date and convert it to MySQL date format using Universal Coordinated Time
+	 * * like: Interpret the input as a string, escape it, wrap it with '%...%'.  Use LIKE operator.
+	 * * 01: Interpret input as a boolean, and convert it to a 0 or 1.
+	 *
+	 * The following modifiers are only available for key-based prepared statments (ie. {foo})
+	 *
+	 * * nokeydate: As 'date', but without the key and = operator
+	 * * nokeyutcdate: As 'date', but without the key and = operator
+	 * * nokeylike: As 'like', but without the key (the word 'LIKE' is still prefixed to the value)
+	 * * nokey: Present value in default form but with no key or operator
+	 * * not: Replace equality/assignment operator with <>
+	 * * >: Replace equality/assignment operator with >
+	 * * >=: Replace equality/assignment operator with >=
+	 * * <: Replace equality/assignment operator with <
+	 * * <=: Replace equality/assignment operator with <=
+	 *
+	 * When using prepared statements, it is advisable to avoid concatenating strings into the query yourself before the query is parsed.  Eg:
+	 *
+	 * $db->query("INSERT INTO binarydata SET dataobj='".$binarydata."', {authorid}", $params);
+	 *
+	 * In some edge cases the prepared statement parser might identify part of your binarydata as a placeholder, and replace it with data from your $params array.  It would be better to include the data in the $params array and use only placeholders in the query itself.
+	 *
+	 * @param string $query  SQL query to execute
+	 * @param mixed  $params If you wish to format a prepared statement, the second parameter may be a keyed associative array of data, keys must correspond to keys specified in querystr.  Alternatively if using sprintf syntax, sprintf variables are passed as the 2nd, 3rd, 4th and subsequent arguments to this method.  Values can be any form of scalar value, or the string 'null'.
+	 * @return integer Query reference
+	 */
+	public function query() {
+		if (!func_num_args()) trigger_error('No query specified', E_USER_ERROR);
+		$args = func_get_args();
+		$inpquery = array_shift($args);
+
+		if (!empty($_SERVER['IS_DEV']) and $this->_injectionchecking and (strpos($inpquery, "'") !== false or strpos($inpquery, "\"") !== false)) {
+			trigger_error("Literal strings should not be included in queries.  Use a prepared statement if possible.", E_USER_DEPRECATED);
+		}
+
+		// Determine which parser to use to build the query.  Set parser name into a variable to aid debugging if an error is thrown later
+		if (count($args) == 1 and is_array($args[0]) and ($args[0] != array_values($args[0]))) {
+			$parser = 'bykey';
+			$query = $this->parseStatement($inpquery, $args[0]);
+		} elseif (count($args) >= 1) {
+			$parser = 'sprintf';
+			$query = $this->parseSPrintF($inpquery, $args);
+		} else {
+			$parser = 'none';
+			$query = $inpquery;
+		}
+
+		if (empty($query)) {
+
+			// Do some diagnostices to try and work out why the query is empty
+			switch (preg_last_error()) {
+				case PREG_NO_ERROR:
+					$error = "No PREG error.";
+					break;
+				case PREG_INTERNAL_ERROR:
+					$error = "Internal PREG error.";
+					break;
+				case PREG_BACKTRACK_LIMIT_ERROR:
+					$error = "Backtrack limit exhasuted.";
+					break;
+				case PREG_RECURSION_LIMIT_ERROR:
+					$error = "Too much recursion.";
+					break;
+				case PREG_BAD_UTF8_ERROR:
+					$error = "Bad UTF8.";
+					break;
+				case PREG_BAD_UTF8_OFFSET_ERROR:
+					$error = "Bad UTF8 offset.";
+					break;
+				default:
+					$error = "Unknown PREG error.";
+					break;
+			}
+			trigger_error('Query is empty: '.$error, E_USER_ERROR);
+		}
+
+		if (!$this->_connectionOpened) $this->_connect();
+		$start = microtime(true);
+		$local_result = $this->_query($query, $this->_conn);
+		$end = microtime(true);
+		$errortxt = mysql_error($this->_conn);
+		if ($this->_reconnectonfail and ($errortxt == "Lost connection to MySQL server during query" or $errortxt == "MySQL server has gone away")) {
+			$this->_connectionOpened = false;
+			$this->_resyncproperties();
+			sleep(5);
+			return call_user_func_array(array($this, "query"), func_get_args());
+		}
+		if ($errortxt == "Lock wait timeout exceeded; try restarting transaction") {
+			$proclistres = $this->_query("SHOW FULL PROCESSLIST", $this->_conn);
+			global $mysqldebug_proclist;
+			$mysqldebug_proclist = array();
+			while($row = mysql_fetch_assoc($proclistres)) $mysqldebug_proclist[] = $row;
+			trigger_error("MySQL lock wait timeout eh:hashcode=A59F658D", E_USER_ERROR);
+			return false;
+		}
+		if ($errortxt == "Deadlock found when trying to get lock; try restarting transaction") {
+
+			// If deadlock found, retry once.
+			static $deadlockRetry;
+			if (!isset($deadlockRetry)) {
+				$deadlockRetry = 1;
+				sleep(5);
+				return call_user_func_array(array($this, "query"), func_get_args());
+			}
+		}
+		if (!$local_result and !$this->_suppresserrors) {
+			$this->_query("ROLLBACK", $this->_conn);
+			$this->_resyncproperties();
+			trigger_error($errortxt." occured in query: ".$query."\n", E_USER_ERROR);
+			return false;
+		} else {
+			$nextref = count($this->_queries) + 1;
+			$this->_queries[$nextref] = array("query" => $query, "time" => $end - $start, "error" => $errortxt, "executiondate" => time(), "results" => $local_result, "insertid" => mysql_insert_id($this->_conn), "rowsaffected" => mysql_affected_rows($this->_conn));
+			$this->_lastqueryresult = $local_result;
+			$this->_resyncproperties();
+			return $nextref;
+		}
+	}
+
+	/**
+	 * Internal method that actually performs a query
+	 *
+	 * Runs a query on the MySQL server.
+	 *
+	 * @param string  $query SQL query to execute
+	 * @param integer $conn  Connection reference
+	 * @return integer Query reference
+	 */
+	public function _query($query, $conn) {
+		return mysql_query($query, $conn);
+	}
+
+	/**
+	 * Perform a crosstab query and correlate the results into an array
+	 *
+	 * Requires an SQL query that selects three fields - x, y and data.
+	 * Executes query, and builds a two-dimensional array in which each
+	 * element contains one cell of the data field referenced like this:
+	 *
+	 * array[y][x] = data
+	 *
+	 * For argument list, see query().
+	 *
+	 * @return array A tabulated two-dimensional array of data
+	 */
+	public function queryCrosstab() {
+		call_user_func_array(array($this, "query"), func_get_args());
+		$data = array();
+		while ($row = $this->getRow()) {
+			if (!isset($data[$row["y"]])) $data[$row["y"]] = array();
+			$data[$row["y"]][$row["x"]] = $row["data"];
+		}
+		return $data;
+	}
+
+	/**
+	 * Execute a query and return the contents of row 1 as an associative array
+	 *
+	 * Intended to be used to retrieve a single row from a query
+	 * that will match exactly one row.  For argument list, see query().
+	 *
+	 * @return array A row of data as key/value pairs
+	 */
+	public function queryRow() {
+		return (call_user_func_array(array($this, 'query'), func_get_args())) ? $this->getRow() : false;
+	}
+
+	/**
+	 * Execute a query and return the contents of row 1, column 1
+	 *
+	 * Intended to be used to retrieve a single value from a query
+	 * that will match one row and one field.  For argument list, see query().
+	 *
+	 * @return mixed Value from row 1, column 1
+	 */
+	public function querySingle() {
+		return (call_user_func_array(array($this, 'query'), func_get_args())) ? $this->getSingleResult() : false;
+	}
+
+	/**
+	 * Execute a query and return all results as a numeric array of rows, each row an associative array
+	 *
+	 * Entirre resultset is loaded into memory - use only on small resultsets
+	 *
+	 * @return array Array containing one element per row in the resultset
+	 */
+	public function queryAllRows() {
+		$ret = array();
+		call_user_func_array(array($this, 'query'), func_get_args());
+		while ($row = $this->getRow()) $ret[] = $row;
+		return $ret;
+	}
+
+	/**
+	 * Execute a query and return all results as an associative array
+	 *
+	 * Query must return two columns, one called 'k' and another called 'v'.  For argument list, see query().
+	 *
+	 * @return array Array containing one element per row in the resultset
+	 */
+	public function queryLookupTable() {
+		$ret = array();
+		call_user_func_array(array($this, 'query'), func_get_args());
+		while ($row = $this->getRow()) $ret[$row["k"]] = $row["v"];
+		return $ret;
+	}
+
+	/**
+	 * Execute a query and return all results as a single array
+	 *
+	 * Query must return one column.  For argument list, see query().
+	 *
+	 * @return array Array containing one element per row in the resultset
+	 */
+	public function queryList() {
+		$ret = array();
+		call_user_func_array(array($this, 'query'), func_get_args());
+		while ($row = $this->getRow()) $ret[] = reset($row);
+		return $ret;
+	}
+
+	/**
+	 * Fetch a row of a previously executed query as an associative array
+	 *
+	 * Query reference is optional.  If omitted, the last query to be executed is used.
+	 *
+	 * @param integer $queryref Query reference.
+	 * @return array A row of data as key/value pairs
+	 */
+	public function getRow($queryref = false) {
+		if ($queryref) {
+			if (empty($this->_queries[$queryref]["results"])) return false;
+			$data = mysql_fetch_assoc($this->_queries[$queryref]['results']);
+		} else {
+			if (!$this->_lastqueryresult) return false;
+			$data = mysql_fetch_assoc($this->_lastqueryresult);
+		}
+		if (!$data) return false;
+		return $data;
+	}
+
+	/**
+	 * Fetch a single 'cell' of data from the first row returned from a query
+	 *
+	 * All parameters are optional.  If query reference is omitted, the last
+	 * query to be executed is used.  If column offset is omitted, zero is assumed.
+	 *
+	 * @param integer $columnoffset Index of column to fetch, where 0 is the leftmost column.
+	 * @param integer $queryref     Query reference.
+	 * @return array A row of data as key/value pairs
+	 */
+	public function getSingleResult($columnoffset = 0, $queryref = false) {
+		if (!$queryref) $queryref = count($this->_queries);
+		if (!$this->getNumResults($queryref)) return false;
+		return mysql_result($this->_queries[$queryref]["results"], 0, $columnoffset);
+	}
+
+	/**
+	 * Return the number of rows returned by a query
+	 *
+	 * Query reference is optional.  If omitted, the last query to be executed is used.
+	 *
+	 * @param integer $queryref Query reference.
+	 * @return integer Number of rows in the resultset
+	 */
+	public function getNumResults($queryref=false) {
+		if (!$queryref) $queryref = count($this->_queries);
+		if (empty($this->_queries[$queryref])) {
+			if ($this->_suppresserrors) return false;
+			trigger_error('Query not found', E_USER_ERROR);
+		}
+		return is_resource($this->_queries[$queryref]["results"]) ? mysql_num_rows($this->_queries[$queryref]["results"]) : 0;
+	}
+
+	/**
+	 * Return the number of rows affected by a query
+	 *
+	 * Query reference is optional.  If omitted, the last query to be executed is used.
+	 * This may return zero if deleting all records from a table, and in the case of
+	 * UPDATE statements, may return a number lower than the number of rows matched by
+	 * the WHERE clause since only rows that are changed from their current value are
+	 * counted.
+	 *
+	 * @param integer $queryref Query reference.
+	 * @return integer Number of rows affected by the query
+	 */
+	public function getRowsAffected($queryref=false) {
+		if (!$queryref) $queryref = count($this->_queries);
+		return $this->_queries[$queryref]["rowsaffected"];
+	}
+
+	/**
+	 * Return the insert ID of an INSERT query
+	 *
+	 * Query reference is optional.  If omitted, the last query to be executed is used.
+	 * If query did not insert a new row, or table did not have an autoincrement column,
+	 * getInsertId() will return false.
+	 *
+	 * @param integer $queryref Query reference.
+	 * @return integer Insert ID produced by query
+	 */
+	public function getInsertId($queryref=false) {
+		if (!$queryref) $queryref = count($this->_queries);
+		return ($this->_queries[$queryref]["insertid"]) ? $this->_queries[$queryref]["insertid"] : false;
+	}
+
+	/**
+	 * Get the error reported by MySQL for a query
+	 *
+	 * Query reference is optional.  If omitted, the last query to be executed is used.
+	 * If query did not error, returns false.
+	 * By default, queries that error will trigger the PHP error handler and will
+	 * terminate execution of the script.  To avoid this, see setErrorSuppression().
+	 *
+	 * @param integer $queryref Query reference.
+	 * @return string Error message reported by MySQL
+	 */
+	public function getError($queryref=false) {
+		if (!$queryref) $queryref = count($this->_queries);
+		return (!empty($this->_queries[$queryref]["error"])) ? $this->_queries[$queryref]["error"] : false;
+	}
+
+	/**
+	 * Get the time taken by a specified query
+	 *
+	 * Query reference is optional.  If omitted, the last query to be executed is used.  Time returned is measured in seconds.
+	 *
+	 * @param integer $queryref Query reference.
+	 * @return float Time in seconds
+	 */
+	public function getQueryTime($queryref=false) {
+		if (!$queryref) $queryref = count($this->_queries);
+		return $this->_queries[$queryref]["time"];
+	}
+
+	/**
+	 * Get the number of queries executed by this connection
+	 *
+	 * Returns total number of queries executed successfully, or (if error suppression
+	 * is enabled) total number of queries executed, whether successful or not. Note
+	 * that this count includes queries such as START TRANSACTION and COMMIT.
+	 *
+	 * @return integer Number of queries executed so far
+	 */
+	public function getQueryCount() {
+		return count($this->_queries);
+	}
+
+	/**
+	 * Get information about the query log
+	 *
+	 * Returns the query log as a large array.
+	 *
+	 * @return array The query log
+	 */
+	public function getQueries() {
+		return $this->_queries;
+	}
+
+	/**
+	 * Return a result set as a CSV
+	 *
+	 * Returns an entire result set as a single string formatted as a CSV.  All
+	 * parameters are optional.
+	 *
+	 * @param integer $queryref Query reference (defaults to last query)
+	 * @param string  $lineend  Row separator (default is a newline)
+	 * @param string  $delim    Field separator (default is a comma)
+	 * @param string  $escape   String to use to prefix to escape the $enclose string if it appears in the data (default is a backslash)
+	 * @param string  $enclose  String to insert before and after each 'cell' (default is a double-quote)
+	 * @return integer Number of queries executed so far
+	 */
+	public function getCSV($queryref=false, $lineend="\n", $delim=",", $escape="\\", $enclose="\"") {
+		if (!$queryref) $queryref = count($this->_queries);
+		if ($row = $this->getRow($queryref)) {
+			$op = "";
+			$data = array();
+			$data[] = array_keys($row);
+			do {
+				$data[] = $row;
+			} while ($row = $this->getRow($queryref));
+			foreach ($data as $row) {
+				if ($enclose) foreach ($row as $colkey=>$col) $row[$colkey] = $enclose.str_replace($enclose, $escape.$enclose, $col).$enclose;
+				$op .= join($delim, $row).$lineend;
+			}
+			return $op;
+		} else {
+			return false;
+		}
+	}
+
+	/**
+	 * Set or unset automatic reconnect
+	 *
+	 * If the connection to MySQL is lost between establishing the connection
+	 * and attempting to run a query, the error "Lost connection to MySQL
+	 * server during query" will be triggered.  If this method is used to
+	 * enable auto-reconnect, class will wait 5 seconds and try again,
+	 * re-establishing the connection if necessary, and producing no errors.
+	 * If auto-reconnect is disabled, the lost connection error will trigger
+	 * the standard PHP error handler.
+	 *
+	 * @param boolean $newval Set to true to enable auto-reconnect
+	 * @return void
+	 */
+	public function setReconnectOnFail($newval=true) {
+		$this->_reconnectonfail = ($newval) ? true : false;
+		$this->_resyncproperties();
+	}
+
+	/**
+	 * Set or unset error suppression
+	 *
+	 * When a query is executed and MySQL returns an error response,
+	 * by default a PHP error is raised as well, and the query is not
+	 * recorded in the query log or allocated a query reference.  If
+	 * you enable error suppression, all queries will be given a query
+	 * reference, and will not trigger a PHP error.  You can then retrieve
+	 * the error text using getError().
+	 *
+	 * @param boolean $newval Set to true to enable error suppression
+	 * @return void
+	 */
+	public function setErrorSuppression($newval=true) {
+		$this->_suppresserrors = ($newval) ? true : false;
+		$this->_resyncproperties();
+	}
+
+	/**
+	 * Escapes special characters in a string for use in a SQL statement
+	 *
+	 * Escapes special characters in the unescaped string, taking into
+	 * account the current character set of the connection so that it is
+	 * safe to place it in a query.  Binary safe.
+	 *
+	 * Calls MySQL's library function mysql_real_escape_string, which prepends
+	 * backslashes to the following characters: \x00, \n, \r, \, ', " and \x1a.
+	 *
+	 * @param mixed $mixed String or array of strings to escape
+	 * @return mixed Escaped version of input
+	 */
+	public function sqlenc($mixed) {
+		if (is_array($mixed)) {
+			foreach ($mixed as $key=>$value) {
+				$mixed[$key] = $this->sqlenc($value);
+			}
+			return $mixed;
+		} else {
+			if (!$this->_connectionOpened) $this->_connect();
+			return mysql_real_escape_string($mixed, $this->_conn);
+		}
+	}
+
+	/**
+	 * Deletes the query history and frees all MySQL result resources
+	 *
+	 * @return void
+	 */
+	public function clearQueryHistory() {
+		if ($this->_queries) {
+			while ($qry = array_pop($this->_queries)) {
+				if (is_resource($qry["results"])) mysql_free_result($qry["results"]);
+			}
+		}
+		$this->_resyncproperties();
+	}
+
+	private function _resyncproperties() {
+		$this->server = $this->_server;
+		$this->username = $this->_username;
+		$this->password = $this->_password;
+		$this->dbname = $this->_dbname;
+		$this->queries = $this->_queries;
+		$this->suppresserrors = $this->_suppresserrors;
+		$this->reconnectonfail = $this->_reconnectonfail;
+		$this->connectionOpened = $this->_connectionOpened;
+	}
+
+	function __destruct() {
+		$this->clearQueryHistory();
+	}
+}
+
+if (!class_exists('MySQLConnection')) class_alias('MySQLConnectionV3', 'MySQLConnection');

@@ -1,0 +1,252 @@
+<?php
+/**
+ * Authentication helper: HTTP Digest Authentication
+ *
+ * Authenticates users via HTTP Digest Auth, stores
+ * credentials and rights in a MySQL table, and
+ * maintains session information about logged-in
+ * users
+ *
+ * Note: if in future we need to package multiple rights
+ * into roles to make admin simpler, replace user
+ * interface for rights management with two interfaces,
+ * one to define roles in terms of a collection of rights,
+ * and one to allocate roles to users.  At the application
+ * level the code checks only rights, not roles - roles
+ * are used only as a way of conveniently allocating large
+ * numbers of rights.
+ *
+ * Rights are like heirarchical namespaces, eg.
+ * events.view.event
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once(dirname(__FILE__)."/auth");
+
+class AuthDigest extends Auth {
+
+	private $db, $realm, $salt;
+
+	public function AuthDigest (&$db, $realm, $salt) {
+		parent::Auth();
+		$this->db = $db;
+		$this->realm = $realm;
+		$this->salt = $salt;
+		if (isset($_SERVER["PHP_AUTH_DIGEST"])) $this->processLogin();
+	}
+
+	public function getUsersWithRight($right) {
+		$matchingusers = array();
+		$this->db->query("SELECT username, rights FROM ".$this->_dbtable);
+		while ($user = $this->db->getRow()) {
+			if ($this->hasRights($right, explode(",", $user["rights"]))) $matchingusers[] = $user["username"];
+		}
+		return $matchingusers;
+	}
+
+	public function getAllUsers() {
+		$matchingusers = array();
+		$this->db->query("SELECT username FROM ".$this->_dbtable." ORDER BY username");
+		while ($user = $this->db->getRow()) {
+			$matchingusers[] = $user["username"];
+		}
+		return $matchingusers;
+	}
+
+	public function getAllDetailKeys() {
+		$fields = array();
+		$this->db->query("SELECT details FROM ".$this->_dbtable);
+		while ($dets = $this->db->getRow()) {
+			$dets = unserialize($dets["details"]);
+			if (!empty($dets)) foreach($dets as $key=>$val) $fields[$key] = 1;
+		}
+		$keys = array_keys($fields);
+		sort($keys);
+		return $keys;
+	}
+
+	public function getDetailsForUser($username) {
+		$user = $this->db->queryRow("SELECT username, details FROM ".$this->_dbtable." WHERE {username}", array("username"=>$username));
+		if ($user) {
+			return ($user["details"]) ? unserialize($user["details"]) : array();
+		} else {
+			return false;
+		}
+	}
+
+	public function getRightsForUser($username) {
+		$rights = $this->db->querySingle("SELECT rights FROM ".$this->_dbtable." WHERE {username}", array("username"=>$username));
+		return ($rights) ? explode(",",$rights) : false;
+	}
+
+	protected function showLogin() {
+		$mtime = round(microtime(true)*1000);
+		$nonce = base64_encode($mtime.":".md5($mtime.":".rand(1000000, 9999999).":".$this->salt));
+		$_SESSION["auth"]["status"] = "login";
+		$_SESSION["auth"]["cache"] = array();
+		header("HTTP/1.1 401 Unauthorized");
+		header("Content-type: text/html");
+		header("WWW-Authenticate: Digest realm=\"".$this->realm."\", qop=\"auth\", nonce=\"".$nonce."\"");
+		parent::showLogin();
+	}
+
+	protected function showInsufficientRights($rightrequired) {
+		header("HTTP/1.1 403 Forbidden");
+		header("Content-type: text/html");
+		parent::showInsufficientRights($rightrequired);
+	}	
+
+	protected function showLogout() {
+		header("Content-type: text/html");
+		parent::showLogout();
+	}
+
+	protected function processLogin() {
+		$authstr = trim($_SERVER["PHP_AUTH_DIGEST"]);
+		$req = array();
+		$req["username"] = (preg_match("/username=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["realm"] = (preg_match("/realm=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["nonce"] = (preg_match("/nonce=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["response"] = (preg_match("/response=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["nc"] = (preg_match("/nc=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["cnonce"] = (preg_match("/cnonce=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["qop"] = (preg_match("/qop=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		$req["uri"] = (preg_match("/uri=\"?(.+?)\"?(\,.*)?$/", $authstr, $m)) ? $m[1] : false;
+		
+		// Check basics of data from client
+		if (!$req["username"] or $req["realm"] != $this->realm or !$req["nonce"] or !$req["response"]) return false;
+
+		// Check nonce validity, and freshness on first request
+		// This allows users to log out because once the session is cleared the nonce will have to be fresh to
+		// remain valid so even though the browser will continue to send credentials after logout, they will
+		// fail this test
+		$ntime = (preg_match("/^(\d+)\:/", base64_decode($req["nonce"]), $m)) ? $m[1] : false;
+		if (!$ntime or ((!isset($_SESSION["auth"]) or !is_array($_SESSION["auth"])) and $ntime < (round(microtime(true)*1000)-20000))) return false;
+
+		// Check request increment is getting higher on each request
+		// REVIEW:AB:20080206: Doesn't seem to happen - FF restarts numbering for each URI change?
+		//if (isset($_SESSION["auth"]) and is_numeric($_SESSION["auth"]["lastnc"]) and $req["nc"] <= $_SESSION["auth"]["lastnc"]) return false;
+		
+		// Check URI is correct (allow browser to have removed querystring, to cope with non-compliant browsers, ie. IE)
+		if($req["uri"] != $_SERVER["REQUEST_URI"]) {
+			$_SERVER["REQUEST_URI"] = substr($_SERVER["REQUEST_URI"], 0, strpos($_SERVER["REQUEST_URI"], '?'));
+			if ($req["uri"] != $_SERVER["REQUEST_URI"]) return false;
+		}
+
+		// Load credentials and calculate digest hash according to RFC2617
+		if (isset($_SESSION["auth"]["cache"]) and $_SESSION["auth"]["cache"] and $_SESSION["auth"]["cache"]["username"] == $req["username"]) {
+			$ha1 = $_SESSION["auth"]["cache"]["passhash"];
+		} else {
+			if (empty($_SESSION["auth"]["status"]) or $_SESSION["auth"]["status"] != 'login') return false;
+			$cache = $this->db->queryRow("SELECT * FROM ".$this->_dbtable." WHERE username=%s", $this->db->sqlenc($req["username"]));
+			if (!$cache) return false;
+			$cache["details"] = unserialize($cache["details"]);
+			$_SESSION["auth"]["cache"] = $cache;
+			$ha1 = $_SESSION["auth"]["cache"]["passhash"];
+			if (!is_array($_SESSION["auth"]["cache"]["details"])) $_SESSION["auth"]["cache"]["details"] = array();
+		}
+		$ha2 = md5($_SERVER["REQUEST_METHOD"].":".$_SERVER["REQUEST_URI"]);
+		$correctresponse = md5($ha1.":".$req["nonce"].":".$req["nc"].":".$req["cnonce"].":".$req["qop"].":".$ha2);
+		/*header("Content-type: text/plain");
+		print_r($req);
+		print_r($_SESSION["auth"]);
+		print_r("Raw header: ".$authstr."\n");
+		print_r("Correct response: ".$correctresponse."\n");
+		print_r("HA1: ".$ha1."\n");
+		print_r("HA2: ".$_SERVER["REQUEST_METHOD"].":".$_SERVER["REQUEST_URI"]." = ".$ha2."\n");
+		exit;*/
+
+		// Log the user in
+		if ($correctresponse == $req["response"]) {
+			$this->authenticateduser = $req["username"];
+			$_SESSION["auth"]["lastnc"] = $req["nc"];
+			$additional = array("username"=>$req["username"]);
+			$this->user = array_merge($_SESSION["auth"]["cache"]["details"], $additional);
+			$this->rights = explode(",", $_SESSION["auth"]["cache"]["rights"]);
+			$_SESSION['auth']['status'] = 'done';
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	public function setPassword($username, $password) {
+		$params["username"] = $username;
+		$params["passhash"] = md5($username.":".$this->realm.":".$password);
+		$this->db->query("INSERT INTO ".$this->_dbtable." SET {passhash}, {username} ON DUPLICATE KEY UPDATE {passhash}", $params);
+	}
+
+	public function deleteUser($username) {
+		$prevsetting = $this->db->suppresserrors;
+		$this->db->setErrorSuppression();
+		$this->db->query("DELETE FROM ".$this->_dbtable." WHERE {username}", array("username"=>$username));
+		$this->db->setErrorSuppression($prevsetting);
+		return ($this->db->getError()) ? false : true;
+	}
+
+	public function setDetails($data, $username=false) {
+		if (empty($username)) {
+			if (!$this->authenticateduser) trigger_error("Cannot set details of current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+		}
+		$params["username"] = $username;
+		$params["details"] = serialize($data);
+		$this->db->query("UPDATE ".$this->_dbtable." SET {details} WHERE {username}", $params);
+		if ($username==$this->authenticateduser) $_SESSION["auth"]["cache"]["details"] = $data;
+	}
+
+	public function grantRight($right, $username=false) {
+		$params = array();
+		if (!$username) {
+			if (!$this->authenticateduser) trigger_error("Cannot grant rights to current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+			if (!in_array($right, $this->rights)) {
+				$this->rights[] = $right;
+				$params["username"] = $username;
+				$params["rights"] = join(",", $this->rights);
+			}
+		} else {
+			$existingrights = explode(",", $this->db->querySingle("SELECT rights FROM ".$this->_dbtable." WHERE username=%s", $username));
+			if (!in_array($right, $existingrights)) {
+				$existingrights[] = $right;
+				$params["username"] = $username;
+				$params["rights"] = join(",", $existingrights);
+			}
+		}
+		if (!empty($params)) $this->db->query("UPDATE ".$this->_dbtable." SET {rights} WHERE {username}", $params);
+	}
+
+	public function revokeRight($right, $username=false) {
+		if (!$username) {
+			if (!$this->authenticateduser) trigger_error("Cannot revoke rights of current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+			if (in_array($right, $this->rights)) {
+				array_splice($this->rights, array_search($right, $this->rights), 1);
+				$params["username"] = $username;
+				$params["rights"] = join(",", $this->rights);
+			}
+		} else {
+			$existingrights = explode(",", $this->db->querySingle("SELECT rights FROM ".$this->_dbtable." WHERE username='".$this->db->sqlenc($username)."'"));
+			if (in_array($right, $existingrights)) {
+				array_splice($existingrights, array_search($right, $existingrights), 1);
+				$params["username"] = $username;
+				$params["rights"] = join(",", $existingrights);
+			}
+		}
+		if ($params) $this->db->query("UPDATE ".$this->_dbtable." SET {rights} WHERE {username}", $params);
+	}
+
+	public function setRights($rights, $username=false) {
+		if (!$username) {
+			if (!$this->authenticateduser) trigger_error("Cannot set rights of current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+			$params = array("username"=>$username, "rights"=>$rights);
+			$this->rights = explode(",", $rights);
+		} else {
+			$params = array("username"=>$username, "rights"=>$rights);
+		}
+		$this->db->query("UPDATE ".$this->_dbtable." SET {rights} WHERE {username}", $params);
+	}
+}
+?>

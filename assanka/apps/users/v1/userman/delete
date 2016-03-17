@@ -1,0 +1,16 @@
+<?php
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+require_once("../appglobal");
+
+$auth->deleteUser($_POST["id"]);
+$page->redirectAndAlert("User deleted", "done", "userman/");
+
+?>

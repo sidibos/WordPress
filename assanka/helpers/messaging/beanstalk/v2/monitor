@@ -1,0 +1,70 @@
+#!/usr/bin/php
+<?php
+/**
+ * Monitors the local (or a specified) Beanstalk queue for the length of the specified tube
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/errorhandler';
+ErrorHandler::init();
+
+require_once $_SERVER['CORE_PATH'].'/helpers/messaging/beanstalk/v2/beanstalk';
+
+$tube = 'WHOLESYSTEM';
+$host = '127.0.0.1:11300';
+$stat = 'queued';
+
+if (!empty($_SERVER['argv']) and is_array($_SERVER['argv'])) {
+	for ($i = 1, $cnt = count($_SERVER['argv']); $i < $cnt; $i++) {
+		if ($_SERVER['argv'][$i] == '--tube' and ($i + 1) <= $cnt) {
+			$tube = $_SERVER['argv'][++$i];
+		} elseif ($_SERVER['argv'][$i] == '--host' and ($i + 1) <= $cnt) {
+			$host = $_SERVER['argv'][++$i];
+		} elseif ($_SERVER['argv'][$i] == '--stat' and ($i + 1) <= $cnt) {
+			$stat = $_SERVER['argv'][++$i];
+		} else {
+			echo "Unrecognised argument: ".$_SERVER['argv'][$i]."\n\n";
+			echo "Usage: monitor [--tube <...>] [--host <...>]\n\n";
+			echo " --host       Beanstalk server hostname and port (default is 127.0.0.1:11300)\n";
+			echo " --tube       Tube to report on (default is to report on the system as a whole, with the pseudonym 'WHOLESYSTEM')\n";
+			echo " --stat       Statistic to report ('queued', 'ready', 'delayed', 'buried', 'total')\n";
+			exit;
+		}
+	}
+}
+
+try {
+	$bs = new BeanstalkConnection($host);
+	if ($tube != 'WHOLESYSTEM') {
+		$stats = $bs->statsTube($tube);
+	} else {
+		$stats = $bs->stats();
+	}
+} catch (Exception $e) {
+	echo "-1\n";
+	exit;
+}
+
+if (!$stats) {
+	echo "0";
+} elseif ($stat == 'queued') {
+	echo $stats['current-jobs-urgent'] + $stats['current-jobs-ready'] + $stats['current-jobs-reserved'] + $stats['current-jobs-delayed'] + $stats['current-jobs-buried'];
+} elseif ($stat == 'ready') {
+	echo $stats['current-jobs-ready'];
+} elseif ($stat == 'delayed') {
+	echo $stats['current-jobs-delayed'];
+} elseif ($stat == 'buried') {
+	echo $stats['current-jobs-buried'];
+} elseif ($stat == 'total') {
+	echo $stats['total-jobs'];
+} elseif ($stat == 'waiting') {
+	echo $stats['current-waiting'];
+} elseif ($stat == 'consuming') {
+	echo $stats['current-waiting'] + $stats['current-jobs-reserved'];
+} else {
+	echo "Can't understand $stat";
+}
+
+echo "\n";

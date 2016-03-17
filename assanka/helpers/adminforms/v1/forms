@@ -1,0 +1,893 @@
+<?php
+
+// This error trigger added 25 Nov 2011
+trigger_error('Inputform v1 is deprecated', E_USER_DEPRECATED);
+
+class inputform {
+
+	var $formname;
+	var $method;
+	var $href;
+	var $onsubmit;
+	var $accesskeys;
+	var $fieldnames;
+	var $groups;
+	var $helptext;
+	var $RGX_PCODE;
+	var $RGX_EMAIL;
+	var $RGX_URL;
+	var $RGX_PHONE;
+	var $RGX_DATE;
+	var $OPTS_TITLES;
+
+	function inputform($name, $method="POST", $href=false, $onsubmit=false) {
+
+
+		$this->formname = $name;
+		$this->method = $method;
+		$this->href = $href;
+		$this->onsubmit = $onsubmit;
+		$this->accesskeys = array();
+		$this->fieldnames = array();
+		$this->groups = "";
+		$this->helptext = array();
+		$this->RGX_PCODE = "/^(((([A-PR-UWYZ][0-9][0-9A-HJKS-UW]?)|([A-PR-UWYZ][A-HK-Y][0-9][0-9ABEHMNPRV-Y]?))\s{0,2}[0-9]([ABD-HJLNP-UW-Z]{2}))|(GIR\s{0,2}0AA))$/i";
+		$this->RGX_EMAIL = "/^[A-z0-9][\w\.\-\+]*@[A-z0-9][\w\-\.]+\.[A-z0-9]{2,6}$/i";
+		$this->RGX_URL = "/^http\:\/\/(([0-9]{1,3}\.){3}[0-9]{1,3}|([0-9a-z\-]+\.)+[a-z]{2,6})(\:[0-9]+)?/i";
+		$this->RGX_PHONE = "/^[0-9 \+\(\)]{5,20}$/i";
+		$this->RGX_DATE = "/^(0?[1-9]|[12][0-9]|3[01])[\/\-\.](0?[1-9]|1[012])[\/\-\.](\d{4})$/";
+		$this->OPTS_TITLES = array("Mr"=>"Mr", "Mrs"=>"Mrs", "Miss"=>"Miss", "Ms"=>"Ms", "Dr"=>"Dr", "Prof"=>"Prof");
+	}
+
+	function addHelptext($field, $text) {
+		if (in_array($field, $this->fieldnames)) {
+			$this->helptext[$field] = $text;
+		}
+	}
+
+	function registerfieldname($name) {
+		if (!in_array($name, $this->fieldnames)) {
+			array_push($this->fieldnames, $name);
+			return true;
+		} else {
+			trigger_error("Field name '".$name."' already in use in form '".$this->formname."'", E_USER_ERROR);
+		}
+	}
+	function registeraccesskey($accesskey) {
+		if ($accesskey) {
+			if (!in_array($accesskey, $this->accesskeys)) {
+				array_push($this->accesskeys, $accesskey);
+				return true;
+			} else {
+				trigger_error("Accesskey '".$accesskey."' already in use in form '".$this->formname."'", E_USER_ERROR);
+			}
+		}
+	}
+	function addGroup($html) {
+		$this->groups .= $html;
+	}
+
+	function outputForm() {
+		if ($this->method) {
+			?><form method="<?=$this->method?>" action="<?=$this->href?>" name="frm<?=$this->formname?>" id="frm<?=$this->formname?>" enctype="multipart/form-data"<?=($this->onsubmit)?" onsubmit=\"".$this->onsubmit."\";":""?>><?php
+		} else {
+			?><form name="frm<?=$this->formname?>" id="frm<?=$this->formname?>" enctype="multipart/form-data"<?=($this->onsubmit)?" onsubmit=\"".$this->onsubmit."\"; ":""?>"><?php
+		}
+		
+		// Output a sacrificial field for IE to sometimes mangle (search for
+		// ISO-8859-1 on http://tinyurl.com/g3ffj )
+		if ($this->method == "POST") {
+			?><input type="hidden" name="AntiInternetExplorerHttpPostError" value="ignore"><?php
+		}
+		
+		echo $this->groups;
+
+		?></form><?php
+
+		$ret = ob_get_contents();
+		ob_clean();
+		return $ret;
+	}
+	
+	function outputContexthelp() {
+		$op = "<span id=\"helppositionmarker\"></span><h3 id=\"helpheader\">Help</h3>";
+		foreach ($this->helptext as $name=>$text) {
+			$op .= "<div id=\"help".$name."\" class=\"help\">".$text."</div>";
+		}
+		$op .= "<div id=\"nohelpavail\" class=\"help\"><em>There is no help available for this item</em></div>";
+		$op .= "<div id=\"nohelp\" class=\"help\" style=\"display: block\"><em>Choose a form field to view context-sensitive help</em></div>";
+		return $op;
+	}
+}
+class activetablefieldgroup {
+	
+	var $form;
+	var $groupname;
+	var $title;
+	var $fields;
+	var $data;
+	var $columns;
+	var $ajaxurl;
+	var $colalignments;
+	var $ALLOWALL;
+	var $SINGLESELECT;
+	var $USEFIELDSASCOLS;
+	var $REQUIRED;
+	var $OPTIONAL;
+
+	function activetablefieldgroup(&$frmobj, $name, $title=false) {
+		$this->form = &$frmobj;
+		$this->groupname = $name;
+		$this->title = $title;
+		$this->fields = array();
+		$this->columns = array();
+		$this->data = array();
+		$this->ALLOWALL = true;
+		$this->SINGLESELECT = false;
+		$this->USEFIELDSASCOLS = false;
+		$this->REQUIRED = true;
+		$this->OPTIONAL = false;
+		$this->ajaxurl = false;
+		$this->colalignments = false;
+	}
+
+	function addSelect($name, $label, $accesskey, $required=false, $includeall=false, $options) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["type"] = "select";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["includeall"] = $includeall;
+		$this->fields[$name]["options"] = $options;
+	}
+	function addText($name, $label, $accesskey, $required=false, $maxlength=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["type"] = "text";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["maxlength"] = $maxlength;
+	}
+	function addAutocomplete($name, $label, $accesskey, $required=false, $maxlength=false, $url, $hidefields=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["type"] = "autocomplete";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["url"] = $url;
+		$this->fields[$name]["maxlength"] = $maxlength;
+		$this->fields[$name]["hidefields"] = $hidefields;
+	}
+	function addFileupload($name, $label, $accesskey, $required=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["type"] = "upload";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["required"] = $required;
+	}
+	function addHidden($name, $value) {
+		$this->form->registerfieldname($name);
+		$this->fields[$name]["type"] = "hidden";
+		$this->fields[$name]["value"] = $value;
+	}
+
+	function enableAjax($url, $colheadings=false) {
+		$this->ajaxurl = $url;
+		if ($colheadings) $this->columns = $colheadings;
+	}
+
+	function addData($rowkey, $value, $rowdata) {
+		$nextitem = sizeof($this->data);
+		$this->data[$nextitem]["key"] = $rowkey;
+		$this->data[$nextitem]["value"] = $value;
+		$this->data[$nextitem]["data"] = $rowdata;
+	}
+
+	function setInputWidth($fieldname, $width) {
+		if (!is_numeric($width)) {
+			trigger_error("Cannot set width to a non-numeric value", E_USER_NOTICE);
+		} else {
+			$this->fields[$fieldname]["width"] = $width;
+		}
+	}
+
+	function setColAlignment($alignments) {
+		if (!is_array($alignments)) {
+			trigger_error("Cannot set alignment: array expected", E_USER_NOTICE);
+			return false;
+		} else {
+			foreach($alignments as $alignment) {
+				if ($alignment != "left" and $alignment != "right" and $alignment != "center") {
+					trigger_error("Cannot set alignment: invalid value", E_USER_NOTICE);
+					return false;
+				}
+			}
+			$this->colalignments = $alignments;
+		}
+	}
+
+
+	function retrievePostedValues() {
+		$ret = array();
+		foreach($_POST as $key=>$value) {
+			if (preg_match("/^".$this->groupname."_value(.*)$/i", $key, $matches)) {
+				$ret[$matches[1]] = $_POST[$this->groupname."_value".$matches[1]];
+			}
+		}
+		return $ret;
+	}
+
+
+	function addToform() {
+
+		// Output title if provided
+		if ($this->title) {
+			?><h4><?=$this->title?></h4><?php
+		}
+		?>
+		<script type="text/javascript">activetables["<?=$this->groupname?>"] = new ActiveTable("<?=$this->groupname?>"); </script>
+		<?php
+		
+		if ($this->colalignments) {
+			// Mozilla and Safari colalignment support, as <col> support is lacking!
+			echo "<style type=\"text/css\">\n";
+			for ($i=0; $i<count($this->colalignments); $i++) {
+				echo "#acttbl_".$this->groupname."_view td:first-child ";
+				for ($j=0; $j<$i; $j++) {
+					echo "+ td ";
+				}
+				echo "{ text-align: ".$this->colalignments[$i]."; }\n";
+			}
+			echo "</style>\n";
+		}
+		?>
+		<table class="data" id="acttbl_<?=$this->groupname?>_view" name="acttbl_<?=$this->groupname?>_view">
+		<?php
+		if ($this->colalignments) {
+			?>
+			<colgroup>
+			<?php
+			foreach($this->colalignments as $al) {
+				echo "<col style=\"text-align:".$al."\">";
+			}
+			?>
+			</colgroup>
+			<?php
+		}
+		?>
+		<thead>
+		<tr>
+		<?php
+
+		// If columns specified, use bespoke headings, otherwise use fields as columns
+		if (sizeof($this->columns)) {
+			foreach($this->columns as $colname) {
+				?><th><?=$colname?></th><?php
+			}
+		} else {
+			foreach($this->fields as $name=>$params) {
+				?><th><?=$this->fields[$name]["label"]?></th><?php
+			}
+		}
+		?>
+		<th>&nbsp;</th>
+		</tr>
+		</thead>
+		<tbody id="acttbl_<?=$this->groupname?>_tbody">
+		<?php
+		$rowextras = " onClick=\"activetables['".$this->groupname."'].toggleRowHighlight(this);\" ";
+
+		if (sizeof($this->data)) {
+			$cols = $this->columns;
+			foreach($this->data as $row) {
+				echo "<tr id=\"acttbl_".$this->groupname."_row".$row["key"]."\" $rowextras>";
+				echo "<input type=\"hidden\" name=\"".$this->groupname."_value".$row["key"]."\" id=\"".$this->groupname."_value".$row["key"]."\" value=\"".$row["value"]."\" />";
+				foreach ($row["data"] as $col) {
+					echo "<td>".$col."</td>";
+				}
+				echo "<td><a href=\"javascript:activetables['".$this->groupname."'].deleterow('".$row["key"]."')\"><img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/delete.gif\" width=\"16\" height=\"16\" id=\"di_".$this->groupname."_".$row["key"]."\"></a></td>";
+				echo "</tr>\n";
+			}
+		}
+		?>
+		</tbody>
+		</table>
+		<table class="activetableform" id="acttbl_<?=$this->groupname?>_form">
+		<tr>
+		<?php
+		foreach($this->fields as $name=>$field) {
+			if ($field["label"]) {
+				?><td class="<?=($field["required"])?"reqfield":"optfield"?>"><label for="frm<?=$this->form->formname?>_<?=$name?>"><?=preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1)?>:</label></td><?php
+			} else {
+				?><td></td><?php
+			}
+		}
+		?>
+		</tr><tr>
+		<?php
+		$includesuploads = false;
+		foreach($this->fields as $name=>$field) {
+			switch($field["type"]) {
+				case "hidden":
+					?>
+					<td class="forminput">
+					<input type="hidden" class="acttbl_<?=$this->groupname?>_field" value="<?=$field["value"]?>" name="<?=$name?>" />
+					</td>
+					<?php
+					break;
+				case "text":
+					?>
+					<td class="forminput">
+					<input type="text" class="acttbl_<?=$this->groupname?>_field" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>"<?=($field["maxlength"])?" maxlength=\"".$field["maxlength"]."\"":""?> value="<?=$field["value"]?>" onfocus="showhidehelp('<?=$name?>', this)"<?=($field["width"])?" style=\"width: ".$field["width"]."px\"":""?> />
+					</td>
+					<?php
+					break;
+				case "autocomplete":
+					$_SESSION["dbg"]["joinargs"] = $field["hidefields"];
+					?>
+					<td class="forminput">
+					<input type="text" class="acttbl_<?=$this->groupname?>_field" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>"<?=($field["maxlength"])?" maxlength=\"".$field["maxlength"]."\"":""?> value="<?=$field["value"]?>" onfocus="showhidehelp('<?=$name?>', this)"<?=($field["width"])?" style=\"width: ".$field["width"]."px\"":""?> />
+					<script type="text/javascript">acfields["frm<?=$this->form->formname?>_<?=$name?>"] = new AutoCompleteField('frm<?=$this->form->formname?>_<?=$name?>', '<?=$field["url"]?>', Array(<?=(is_array($field["hidefields"]) and sizeof($field["hidefields"]))?"\"".join("\",\"", $field["hidefields"])."\"":""?>));</script>
+					</td>
+					<?php
+					break;
+				case "select":
+					?>
+					<td class="forminput">
+					<select class="acttbl_<?=$this->groupname?>_field" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>" onFocus="showhidehelp('<?=$name?>', this)"<?=($field["width"])?" style=\"width: ".$field["width"]."px\"":""?>>
+					<?php
+					if ($field["includeall"]) echo "<option value=\"#SELECTALL#\">All</option>";
+					if (!is_array($field["options"])) trigger_error("No options were supplied for the field: $name",E_USER_ERROR);
+					foreach($field["options"] as $key=>$option) {
+						?><option value="<?=$key?>"><?=$option?></option><?php
+					}
+					?>
+					</select>
+					</td>
+					<?php
+					break;
+				case "upload":
+					?>
+					<td class="forminput">
+					<input type="text" class="acttbl_<?=$this->groupname?>_field" id="frm<?=$this->form->formname?>_<?=$name?>" name="<?=$name?>" onFocus="showhidehelp('<?=$name?>', this)" disabled="disabled"<?=($field["width"])?" style=\"width: ".$field["width"]."px\"":""?> /> <input type="button" value="Choose" onclick="FileUploader.fileupload(this)" />
+					</td>
+					<?php
+					$includesuploads = true;
+					break;
+			}
+		}
+		if ($this->ajaxurl) {
+			?><td><input type="button" value="Add" id="acttbl_<?=$this->groupname?>_btn" onClick="activetables['<?=$this->groupname?>'].add_ajax('<?=$this->ajaxurl?>')" /></td><?php
+		} else {
+			?><td><input type="button" value="Add" id="acttbl_<?=$this->groupname?>_btn" onClick="activetables['<?=$this->groupname?>'].add_std()" /></td><?php
+		}
+		?></tr></table><?php
+		$ret = ob_get_contents();
+		ob_clean();
+		$this->form->addGroup($ret);
+	}
+}
+
+class simplefieldgroup {
+	
+	var $form;
+	var $fields;
+	var $title;
+	var $ALLOWBLANKSELECT;
+	var $NOBLANKSELECT;
+	var $REQUIRED;
+	var $OPTIONAL;
+	var $contentcount;
+
+	function simplefieldgroup(&$frmobj, $title=false) {
+		$this->form = &$frmobj;
+		$this->title = $title;
+		$this->fields = array();
+		$this->contentcount = 1;
+		$this->ALLOWBLANKSELECT = true;
+		$this->NOBLANKSELECT = false;
+		$this->REQUIRED = true;
+		$this->OPTIONAL = false;
+	}
+
+	function addText($name, $label, $accesskey, $required=false, $validpattern=false, $maxlength=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "text";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["validpattern"] = $validpattern;
+		$this->fields[$name]["maxlength"] = $maxlength;
+	}
+
+	function addPassword($name, $label, $accesskey, $required=false, $validpattern=false, $maxlength=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "password";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["validpattern"] = $validpattern;
+		$this->fields[$name]["maxlength"] = $maxlength;
+	}
+
+	function addSelect($name, $label, $accesskey, $required=false, $options, $allowblank=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "select";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["options"] = $options;
+		$this->fields[$name]["allowblank"] = $allowblank;
+	}
+
+	function addCheckboxes($name, $label, $accesskey, $options) {
+		$this->form->registerfieldname($name);
+		if ($accesskey) {
+			$this->form->registeraccesskey($accesskey);
+			$this->fields[$name]["accesskey"] = $accesskey;
+		}
+		$this->fields[$name]["type"] = "check";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["options"] = $options;
+	}
+
+	function addTextarea($name, $label, $accesskey, $required=false, $validpattern=false, $height=100, $maxlength=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "textarea";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["validpattern"] = $validpattern;
+		$this->fields[$name]["height"] = $height;
+		$this->fields[$name]["maxlength"] = $maxlength;
+	}
+
+	function addRichtext($name, $label, $accesskey, $required=false, $height=200, $toolset='AssankaBasic', $csspath = false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "richtext";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["height"] = $height;
+		$this->fields[$name]["toolset"] = $toolset;
+		$this->fields[$name]["csspath"] = $csspath;
+	}
+
+	function addImageupload($name, $label, $accesskey, $required=false, $destdir="/lib/tmp/uploadedfiles") {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "imageupload";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["destdir"] = $destdir;
+	}
+
+	function addUpload($name, $label, $accesskey, $required=false, $destdir="/lib/tmp/uploadedfiles") {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "upload";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["destdir"] = $destdir;
+	}
+
+	function addAutocomplete($name, $label, $accesskey, $required=false, $validpattern=false, $maxlength=false, $url, $hidefields=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "autocomplete";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+		$this->fields[$name]["url"] = $url;
+		$this->fields[$name]["validpattern"] = $validpattern;
+		$this->fields[$name]["maxlength"] = $maxlength;
+		$this->fields[$name]["hidefields"] = $hidefields;
+	}
+
+	function addColorPick($name, $label, $accesskey, $required=false) {
+		$this->form->registerfieldname($name);
+		$this->form->registeraccesskey($accesskey);
+		$this->fields[$name]["accesskey"] = $accesskey;
+		$this->fields[$name]["type"] = "colorpick";
+		$this->fields[$name]["label"] = $label;
+		$this->fields[$name]["required"] = $required;
+	}
+
+	function addHidden($name, $value=false) {
+		if (substr($name, strlen($name)-2) == "[]") {
+			$name = substr($name, 0, strlen($name)-2);
+			if (!array_key_exists($name, $this->fields)) {
+				$this->form->registerfieldname($name);
+				$this->fields[$name]["value"] = array();
+				$this->fields[$name]["type"] = "hidden";
+			}
+			if ($value) $this->fields[$name]["value"][] = $value;
+		} else {
+			$this->form->registerfieldname($name);
+			$this->fields[$name]["type"] = "hidden";
+			if ($value) $this->fields[$name]["value"] = $value;
+		}
+	}
+
+	function addDummy($label, $value) {
+		$this->fields[$label]["type"] = "dummy";
+		$this->fields[$label]["label"] = $label;
+		$this->fields[$label]["value"] = $value;
+	}
+
+	function addContent($str) {
+		$this->fields[$this->contentcount++] = $str;
+	}
+
+	function addSpacer() {
+		$this->fields[$this->contentcount++]["type"] = "spacer";
+	}
+
+	function addData($data) {
+		foreach($this->fields as $name=>$field) {
+			if (isset($data[$name])) {
+				if (!is_array($data[$name]) and $field["type"] != "richtext") {
+					$data[$name] = str_replace(array("'", "\"", "<", ">"), array("&#039;", "&quot;", "&lt;", "&gt;"),  $data[$name]);
+				} elseif (!is_array($data[$name]) and $field["type"] == "richtext") {
+					$data[$name] = str_replace(array("'", "\\","\n","\r"), array("&#039;", "\\\\","\\n","\\r"),  $data[$name]);
+				}
+				$this->fields[$name]["value"] = $data[$name];
+			}
+		}
+	}
+	
+	function makeInputInvalid($fieldname, $explanation) {
+		$this->fields[$fieldname]["invalidexplanation"] = $explanation;
+	}
+
+	function inputValid() {
+		foreach($this->fields as $name=>$field) {
+			if (is_array($field) and $field["type"] != "spacer") {
+				if (!empty($field["invalidexplanation"])) {
+					return false;
+				} else if (!empty($field["required"]) and ($field["value"] == "") and empty($field["allowblank"])) {
+					return false;
+				} elseif (!empty($field["value"]) and !empty($field["validpattern"])) {
+					if (!preg_match($field["validpattern"], $field["value"])) {
+						return false;
+					}
+				} elseif ($field["type"]=="select" and !in_array($field["value"], array_keys($field["options"])) and !($field["allowblank"] and !$field["value"])) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	function retrievePostedValues() {
+		$ret = array();
+		foreach($_POST as $key=>$value) {
+			if (isset($this->fields[$key]) and $this->fields[$key]["type"] != "dummy") {
+				$ret[$key] = $value;
+			}
+		}
+		return $ret;
+	}
+
+	function addToform($showinvalid=false) {
+
+		// Output title if provided
+		if ($this->title) {
+			?><h4><?=$this->title?></h4><?php
+		}
+
+		// Output the hidden fields and count the visible ones
+		$numvisible = 0;
+		foreach($this->fields as $name=>$field) {
+			if ($field["type"] == "hidden") {
+				if (!empty($field["value"]) and is_array($field["value"])) {
+					$i=0;
+					foreach ($field["value"] as $val) {
+						?><input type="hidden" name="<?=$name?>[]" id="frm<?=$this->form->formname?>_<?=$name?>_<?=++$i?>" value="<?=$val?>" /><?php
+					}
+				} else {
+					?><input type="hidden" name="<?=$name?>" id="frm<?=$this->form->formname?>_<?=$name?>" value="<?=((empty($field["value"]))?"":$field["value"])?>" /><?php
+				}
+			} else {
+				$numvisible++;
+			}
+		}
+
+		// Table for holding visible fields
+		if ($numvisible) {
+			?><table class="form"><?php
+
+			// Visible fields
+			foreach($this->fields as $name=>$field) {
+				if (is_array($field)) {
+					$field["valid"] = true;
+					if ($showinvalid) {
+						if (!empty($field["invalidexplanation"])) {
+							$field["valid"] = false;
+						} else if (!empty($field["required"]) and ($field["value"] == "") and empty($field["allowblank"])) {
+							$field["valid"] = false;
+							$field["invalidexplanation"] = "You must enter a value for this field";
+						} else if (!empty($field["value"]) and !empty($field["validpattern"]) and !preg_match($field["validpattern"], $field["value"])) {
+							$field["valid"] = false;
+							$field["invalidexplanation"] = "This field requires data to be entered in a certain format, which has not been matched.  Please review the help text available in the panel on the right for guidance.";
+						} else if ($field["type"] == "select" and !in_array($field["value"], array_keys($field["options"])) and !($field["allowblank"] and !$field["value"])) {
+							$field["valid"] = false;
+							$field["invalidexplanation"] = "This field has been submitted with a value not found in the original dropdown, possibly because the value has been removed by an administrator.";
+						}
+					}
+					switch($field["type"]) {
+						case "dummy":
+							?>
+							<tr>
+							<td class="formlabel" nowrap><?=($field["label"])?$field["label"].":":""?></td>
+							<td class="forminput" style="padding-top: 5px">
+							<?=$field["value"]?>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "text":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<input type="text" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>"<?=($field["maxlength"])?" maxlength=\"".$field["maxlength"]."\"":""?> value="<?=((empty($field["value"]))?"":$field["value"])?>" />
+							</td>
+							</tr>
+							<?php
+							break;
+						case "password":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<input type="password" autocomplete="off" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>"<?=($field["maxlength"])?" maxlength=\"".$field["maxlength"]."\"":""?> value="<?=$field["value"]?>" />
+							</td>
+							</tr>
+							<?php
+							break;
+						case "textarea":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<textarea id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>"<?=($field["maxlength"])?" maxlength=\"".$field["maxlength"]."\"":""?> style="height: <?=$field["height"]?>px"><?=$field["value"]?></textarea>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "richtext":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<script type="text/javascript">
+							var oFCKeditor = new FCKeditor('<?=$name?>');
+							oFCKeditor.BasePath		= '<?=$_SERVER["CORE_WEB_ALIAS"]?>/fckeditor/v2.4/';
+							oFCKeditor.Width		= "100%";
+							oFCKeditor.Height		= <?=$field["height"]?>;
+							oFCKeditor.ToolbarSet	= '<?=$field["toolset"]?>';
+							oFCKeditor.Value		= '<?=$field["value"]?>';
+							<?=($field["csspath"])?"oFCKeditor.Config.EditorAreaCSS = '".$field["csspath"]."';":""?>
+							oFCKeditor.Create();
+							</script>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "select":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<select id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>">
+							<?php
+							if ($field["allowblank"] && !array_key_exists("", $field["options"])) {
+								?><option value=""></option><?php
+							}
+							foreach($field["options"] as $key=>$option) {
+								?><option value="<?=$key?>"<?=($field["value"]==$key)?" selected=\"selected\"":""?>><?=$option?></option><?php
+							}
+							?>
+							</select>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "check":
+							?>
+							<tr>
+							<td class="formlabel" nowrap><span<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?>><?=($field["label"])?$field["label"].":":""?></span></td>
+							<td>
+							<?php
+							$i=0;
+							foreach($field["options"] as $key=>$option) {
+								?><input type="checkbox" style="width: 20px" name="<?=$name?>[]" id="frm<?=$this->form->formname?>_<?=$name?>_<?=++$i?>" value="<?=$key?>"<?=(is_array($field["value"]) and in_array($key, $field["value"]))?" checked=\"checked\"":""?>><label for="frm<?=$this->form->formname?>_<?=$name?>_<?=$i?>"><?=$option?></label><br /><?php
+							}
+							?>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "imageupload":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><span<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?>><?=($field["label"])?$field["label"].":":""?></span></td>
+							<td>
+							<input class="imageupload" type="hidden" id="frm<?=$this->form->formname?>_<?=$name?>" name="<?=$name?>" value="<?=$field["value"]?>" /><div class="imageupload" style="width: 398px; border: 1px solid #888; height:18px; float: left; color: #555; cursor: default" onmouseover="if(this.previousSibling.value) ImagePreview.showtrail('<?=($field["destdir"])?$field["destdir"]:"/lib/tmp/uploadedfiles"?>/' + this.previousSibling.value);" onmouseout="ImagePreview.hidetrail()"><?=$field["value"]?></div>&nbsp;<input type="button" value="Choose" onclick="FileUploader.fileupload(this, '<?=$field["destdir"]?>')" style="width: 60px" />
+							</td>
+							</tr>
+							<?php
+							break;
+						case "upload":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><span<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?>><?=($field["label"])?$field["label"].":":""?></span></td>
+							<td>
+							<input class="fupload" type="hidden" id="frm<?=$this->form->formname?>_<?=$name?>" name="<?=$name?>" value="<?=$field["value"]?>" /><div class="fupload" style="width: 398px; border: 1px solid #888; height:18px; float: left; color: #555; cursor: default"><?=$field["value"]?></div>&nbsp;<input type="button" value="Choose" onclick="FileUploader.fileupload(this, '<?=$field["destdir"]?>')" style="width: 60px" />
+							</td>
+							</tr>
+							<?php
+							break;
+						case "autocomplete":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<input type="text" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>"<?=($field["maxlength"])?" maxlength=\"".$field["maxlength"]."\"":""?> value="<?=$field["value"]?>" />
+							<script type="text/javascript">acfields["frm<?=$this->form->formname?>_<?=$name?>"] = new AutoCompleteField('frm<?=$this->form->formname?>_<?=$name?>', '<?=$field["url"]?>', Array(<?=(is_array($field["hidefields"]) and sizeof($field["hidefields"]))?"\"".join("\",\"", $field["hidefields"])."\"":""?>));</script>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "colorpick":
+							?>
+							<tr>
+							<td class="<?=($field["required"])?"reqfield":"optfield"?> formlabel" nowrap><label<?=(!$field["valid"])?" class=\"invalid\" title=\"".$field["invalidexplanation"]."\"":""?> for="frm<?=$this->form->formname?>_<?=$name?>"><?=($field["label"])?preg_replace("/(".$field["accesskey"].")/i", "<u>$1</u>", $field["label"], 1).":":""?></label></td>
+							<td class="forminput">
+							<input type="text" id="frm<?=$this->form->formname?>_<?=$name?>"<?=(($field["accesskey"])?" accesskey=\"".$field["accesskey"]."\"":"")?> name="<?=$name?>" maxlength=7 value="<?=$field["value"]?>" />
+							<script>attachColorPicker(document.getElementById('frm<?=$this->form->formname?>_<?=$name?>'));</script>
+							</td>
+							</tr>
+							<?php
+							break;
+						case "spacer":
+							?>
+							<tr>
+							<td>&nbsp;</td>
+							<td>&nbsp;</td>
+							</tr>
+							<?php
+							break;
+					}
+				} else {
+					?>
+					<tr>
+					<td colspan="2"><?=$field?></td>
+					</tr>
+					<?php
+				}
+
+			}
+
+			// End table
+			?></table><?php
+		}
+		$ret = ob_get_contents();
+		ob_clean();
+		$this->form->addGroup($ret);
+	}
+}
+
+class tablelistfieldgroup {
+	
+	var $form;
+	var $title;
+	var $name;
+	var $data;
+	var $selections;
+	var $columns;
+	var $includebatchlinks;
+	var $mode;
+
+	function tablelistfieldgroup(&$frmobj, $name=false, $title=false, $columns=false, $mode='checkbox', $includebatchlinks=true) {
+		$this->form = &$frmobj;
+		$this->title = $title;
+		$this->name = $name;
+		$this->includebatchlinks = $includebatchlinks;
+		$this->mode = $mode;
+		$this->columns = $columns;
+		$this->data = array();
+		$this->selections = array();
+	}
+
+	function addData($key, $rowdata, $isselected=false) {
+		$this->data[$key] = $rowdata;
+		if ($isselected) $this->selections[] = $key;
+	}
+
+	function addToform() {
+
+		// If no columns specified, use field labels
+		if (!sizeof($this->columns)) {
+			foreach(array_keys($this->data) as $label) $this->columns[] = $label;
+		}
+
+		// Output title if provided
+		if ($this->title) {
+			?><h4><?=$this->title?></h4><?php
+		}
+		?>
+		<table class="data" id="tbllst_<?=$this->name?>" name="tbllst_<?=$this->name?>">
+		<thead>
+		<tr>
+		<?php
+		?><th style="width:30px">&nbsp;</th><?php
+		foreach($this->columns as $colname) {
+			?><th><?=$colname?></th><?php
+		}
+		?>
+		</tr>
+		</thead>
+		<tbody>
+		<?php
+		if (sizeof($this->data)) {
+			foreach($this->data as $key=>$row) {
+				echo "<tr>";
+				if ($this->mode=='checkbox') {
+					echo "<td><input type=\"checkbox\" name=\"".$this->name."[]\" id=\"".$this->name."_".$key."\" value=\"".$key."\"";
+				} else {
+					echo "<td><input type=\"radio\" name=\"".$this->name."\" id=\"".$this->name."_".$key."\" value=\"".$key."\"";
+				}
+				if (in_array($key, $this->selections)) echo " checked=\"checked\"";
+				echo " /></td>";
+				foreach ($row as $col) {
+					echo "<td>".$col."</td>";
+				}
+				echo "</tr>\n";
+			}
+		}
+		?>
+		</tbody>
+		</table>
+		<?php
+		$ret = ob_get_contents();
+		ob_clean();
+		$this->form->addGroup($ret);
+	}
+}
+
+class customfieldgroup {
+	
+	var $form;
+	var $title;
+
+	function customfieldgroup(&$frmobj, $title=false) {
+		$this->form = &$frmobj;
+		$this->title = $title;
+	}
+
+	function addToform($html) {
+
+		// Output title if provided
+		$ret = "";
+		if ($this->title) {
+			$ret .= "<h4>".$this->title."</h4>";
+		}
+		$ret .= $html;
+		$this->form->addGroup($ret);
+	}
+}
+
+?>

@@ -1,0 +1,20 @@
+<?php
+/**
+ * Generic object class - provides access to databases
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+abstract class OrmSingletonV1 extends OrmBase {
+
+	protected static $instance;
+
+	public static function getInstance() {
+		$class = get_called_class();
+		if (!isset(static::$instance)) static::$instance = new $class;
+		return static::$instance;
+	}
+}
+
+if (!class_exists('OrmSingleton')) class_alias('OrmSingletonV1', 'OrmSingleton');

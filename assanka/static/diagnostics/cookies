@@ -1,0 +1,33 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html charset=utf-8" />
+<title>Cookie collection</title>
+</head>
+<body>
+<script src="/corestatic/javascript/jquery/1.4.1.js" type="text/javascript"></script>
+
+<form method="post" action="" id="sub">
+	<input type="hidden" id="cookies" name="cookies" value=""/>
+	<input type="hidden" id="diagnostics_action" name="diagnostics_action" value="foreignCookies_done"/>
+	<input type="submit" value="iefix"/>
+</form>
+
+<script type="text/javascript">
+	function getParameterByName(name) {
+		name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+		var regexS = "[\\?&]"+name+"=([^&#]*)";
+		var regex = new RegExp( regexS );
+		var results = regex.exec(window.location.href);
+		return (results == null) ? "" : results[1];
+	}
+
+	$('#cookies').val(document.cookie);
+	$('#sub').get(0).action = getParameterByName('returnurl');
+	$('#sub').submit();
+
+</script>
+</body>
+</html>

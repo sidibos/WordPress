@@ -1,0 +1,210 @@
+<?php
+
+require_once("auth");
+
+class AuthDigestHTML extends Auth {
+
+	protected $realm, $salt, $authenticateduser;
+	protected $html_login, $html_insufficientrights, $html_logout, $rights;
+	public $user;
+
+	public function AuthDigestHTML (&$db, $realm, $salt) {
+		parent::Auth();
+		$this->db = $db;
+		$this->realm = $realm;
+		$this->salt = $salt;
+		if (empty($this->authenticateduser)) {
+			$this->processLogin();
+		}
+	}
+
+	public function getUsersWithRight($right) {
+		$matchingusers = array();
+		$this->db->query("SELECT username, rights FROM ".$this->_dbtable);
+		while ($user = $this->db->getRow()) {
+			if ($this->hasRights($right, explode(",", $user["rights"]))) $matchingusers[] = $user["username"];
+		}
+		return $matchingusers;
+	}
+
+	public function getDetailsForUser($username) {
+		$dets = $this->db->querySingle("SELECT details FROM ".$this->_dbtable." WHERE {username}", array("username"=>$username));
+		return ($dets) ? unserialize($dets) : false;
+	}
+
+	public function getRightsForUser($username) {
+		$rights = $this->db->querySingle("SELECT rights FROM ".$this->_dbtable." WHERE {username}", array("username"=>$username));
+		return ($rights) ? explode(",",$rights) : false;
+	}
+
+	protected function showLogin() {
+		$mtime = round(microtime(true)*1000);
+		$nonce = base64_encode($mtime.":".md5($mtime.":".rand(1000000, 9999999).":".$this->salt));
+		$nc = (isset($_SESSION["auth"]["lastnc"])?$_SESSION["auth"]["lastnc"]:0);
+		header("HTTP/1.1 200 OK");
+		header("Content-type: text/html");
+		if ($this->html_login and is_file($this->html_login)) {
+			readfile($this->html_login);
+		} else {
+			?>
+			<!DOCTYPE html public "-//w3c//dtd html 4.01 transitional//en" "http://www.w3.org/tr/1999/rec-html401-19991224/loose.dtd">
+			<html>
+			<head>
+			<script type="text/javascript" src="/corestatic/javascript/auth/digestauth.js"></script>
+			<title>Login required</title>
+			</head>
+			<body>
+				<noscript>
+					<strong>This secure login system requires JavaScript.  You have JavaScript disbled, so the login will be unencrypted.</strong>
+				</noscript>
+				<form id="frmlogin" action="" method="post">
+					<input id="frmlogin_authtype" type="hidden" name="authtype" value="unencrypted" />
+					<input id="frmlogin_cnonce" type="hidden" name="cnonce" value="" />
+					<input id="frmlogin_nc" type="hidden" name="nc" value="<?=$nc?>" />
+					<input id="frmlogin_response" type="hidden" name="response" value="" />
+					<input id="frmlogin_uri" type="hidden" name="uri" value="" />
+					<input id="frmlogin_realm" type="hidden" name="realm" value="<?=$this->realm?>" />
+					<input id="frmlogin_qop" type="hidden" name="qop" value="auth" />
+					<input id="frmlogin_nonce" type="hidden" name="nonce" value="<?=$nonce?>" />
+					<label for="frmlogin_username">Username:</label>
+					<input id="frmlogin_username" type="text" name="username"  /> <br />
+					<label for="frmlogin_password">Password:</label>
+					<input id="frmlogin_password" type="password" name="password"  /> <br />
+					<input type="submit" value="Submit" onclick="sendAuth();return false;" />
+				</form>
+			</body>
+			</html>
+			<?php
+		}	
+		exit;
+	}
+
+	protected function processLogin() {
+
+		// Perform a simple, unencrypted, login if the user had Javascript disabled
+		if (isset($_POST["authtype"]) and $_POST["authtype"] == "unencrypted") {
+			if (!$_POST["username"] or !$_POST["password"]) return false;
+			if (isset($_SESSION["auth"]) and $_SESSION["auth"]["cache"] and $_SESSION["auth"]["cache"]["username"] == $_POST["username"]) {
+				$ha1 = $_SESSION["auth"]["cache"]["passhash"];
+			} else {
+				$cache = $this->db->queryRow("SELECT * FROM ".$this->_dbtable." WHERE username='".$this->db->sqlenc($_POST["username"])."'");
+				if (!$cache) return false;
+				$cache["details"] = unserialize($cache["details"]);
+				$_SESSION["auth"]["cache"] = $cache;
+				$ha1 = $_SESSION["auth"]["cache"]["passhash"];
+				if (!is_array($_SESSION["auth"]["cache"]["details"])) $_SESSION["auth"]["cache"]["details"] = array();
+			}
+			$simpleauth = (md5($_POST["username"].":".$this->realm.":".$_POST["password"]) == $ha1);
+		
+		// Perform the full digest auth if the user is using Javascript
+		} else {
+
+			// Check basics of data from client
+			if (!isset($_POST["username"]) or $_POST["realm"] != $this->realm or !$_POST["nonce"] or !$_POST["response"]) return false;
+
+			// Check nonce validity, and freshness on first request
+			// This allows users to log out because once the session is cleared the nonce will have to be fresh to
+			// remain valid so even though the browser will continue to send credentials after logout, they will
+			// fail this test
+			$ntime = (preg_match("/^(\d+)\:/", base64_decode($_POST["nonce"]), $m)) ? $m[1] : false;
+			if (!$ntime or ((!isset($_SESSION["auth"]) or !is_array($_SESSION["auth"])) and $ntime < (round(microtime(true)*1000)-20000))) return false;
+
+			// Check request increment is getting higher on each request
+			if (isset($_SESSION["auth"]) and is_numeric($_SESSION["auth"]["lastnc"]) and $_POST["nc"] <= $_SESSION["auth"]["lastnc"]) return false;
+
+			// Check URI is correct (allow browser to have removed querystring, to cope with non-compliant browsers, ie. IE)
+			if($_POST["uri"] != $_SERVER["REQUEST_URI"]) {
+				$_SERVER["REQUEST_URI"] = substr($_SERVER["REQUEST_URI"], 0, strpos($_SERVER["REQUEST_URI"], '?'));
+				if ($_POST["uri"] != $_SERVER["REQUEST_URI"]) return false;
+			}
+
+			// Load credentials and calculate digest hash according to RFC2617
+			if (isset($_SESSION["auth"]) and $_SESSION["auth"]["cache"] and $_SESSION["auth"]["cache"]["username"] == $_POST["username"]) {
+				$ha1 = $_SESSION["auth"]["cache"]["passhash"];
+			} else {
+				$cache = $this->db->queryRow("SELECT * FROM ".$this->_dbtable." WHERE username='".$this->db->sqlenc($_POST["username"])."'");
+				if (!$cache) return false;
+				$cache["details"] = unserialize($cache["details"]);
+				$_SESSION["auth"]["cache"] = $cache;
+				$ha1 = $_SESSION["auth"]["cache"]["passhash"];
+				if (!is_array($_SESSION["auth"]["cache"]["details"])) $_SESSION["auth"]["cache"]["details"] = array();
+			}
+			$ha2 = md5($_SERVER["REQUEST_METHOD"].":".$_SERVER["REQUEST_URI"]);
+			$correctresponse = md5($ha1.":".$_POST["nonce"].":".$_POST["nc"].":".$_POST["cnonce"].":".$_POST["qop"].":".$ha2);
+		}
+
+		// Log the user in
+		if (($_POST["authtype"] == "encrypted" and $correctresponse == $_POST["response"]) or ($_POST["authtype"] == "unencrypted" and $simpleauth == true)) {
+			$this->authenticateduser = $_POST["username"];
+			$_SESSION["auth"]["lastnc"] = $_POST["nc"];
+			$additional = array("username"=>$_POST["username"]);
+			$this->user = array_merge($_SESSION["auth"]["cache"]["details"], $additional);
+			$this->rights = explode(",", $_SESSION["auth"]["cache"]["rights"]);
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	protected function showLogout() {
+		header("Content-type: text/html");
+		parent::showLogout();
+	}
+
+	public function setPassword($username, $password) {
+		$params["username"] = $username;
+		$params["passhash"] = md5($username.":".$this->realm.":".$password);
+		$this->db->query("REPLACE INTO ".$this->_dbtable." SET {passhash}, {username}", $params);
+	}
+
+	public function setDetails($data, $username=false) {
+		if (!$username) {
+			if (!$this->authenticateduser) trigger_error("Cannot set details of current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+		}
+		$params["username"] = $username;
+		$params["details"] = serialize($data);
+		$this->db->query("UPDATE ".$this->_dbtable." SET {details} WHERE {username}", $params);
+	}
+
+	public function grantRight($right, $username=false) {
+		if (!$username) {
+			if (!$this->authenticateduser) trigger_error("Cannot grant rights to current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+			if (!in_array($right, $this->rights)) {
+				$this->rights[] = $right;
+				$params["username"] = $username;
+				$params["rights"] = join(",", $this->rights);
+			}
+		} else {
+			$existingrights = explode(",", $this->db->querySingle("SELECT rights FROM ".$this->_dbtable." WHERE username='".$this->db->sqlenc($username)."'"));
+			if (!in_array($right, $existingrights)) {
+				$existingrights[] = $right;
+				$params["username"] = $username;
+				$params["rights"] = join(",", $existingrights);
+			}
+		}
+		if ($params) $this->db->query("UPDATE ".$this->_dbtable." SET {rights} WHERE {username}", $params);
+	}
+
+	public function revokeRight($right, $username=false) {
+		if (!$username) {
+			if (!$this->authenticateduser) trigger_error("Cannot revoke rights of current user - no user is logged in", E_USER_ERROR);
+			$username = $this->authenticateduser;
+			if (in_array($right, $this->rights)) {
+				array_splice($this->rights, array_search($right, $this->rights), 1);
+				$params["username"] = $username;
+				$params["rights"] = join(",", $this->rights);
+			}
+		} else {
+			$existingrights = explode(",", $this->db->querySingle("SELECT rights FROM ".$this->_dbtable." WHERE username='".$this->db->sqlenc($username)."'"));
+			if (in_array($right, $existingrights)) {
+				array_splice($existingrights, array_search($right, $existingrights), 1);
+				$params["username"] = $username;
+				$params["rights"] = join(",", $existingrights);
+			}
+		}
+		if ($params) $this->db->query("UPDATE ".$this->_dbtable." SET {rights} WHERE {username}", $params);
+	}
+}
+?>

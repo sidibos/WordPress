@@ -1,0 +1,18 @@
+<?php 
+	session_start();
+?>{
+	"rights": {
+		"support": "Support contact"
+	}
+<?php 
+	if (isset($_SESSION["auth"]["cache"]["username"]) and $_SESSION["auth"]["cache"]["username"]=="assanka") {
+?>
+	, "settings": {
+		"supportkey": "Assanka support key"
+	}
+<?php
+	}
+?>
+
+
+}

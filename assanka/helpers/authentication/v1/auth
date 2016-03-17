@@ -1,0 +1,144 @@
+<?php
+class Auth {
+
+	protected $authenticateduser;
+	protected $_dbtable;
+	protected $html_login, $html_insufficientrights, $html_logout, $rights;
+	public $user;
+
+	protected function Auth() {
+		if (!session_id()) session_start();
+		$this->_dbtable = "auth_users";
+	}
+
+	public function setDatabaseTable($dbtable) {
+		$this->_dbtable = $dbtable;
+	}
+
+	public function checkRights($requiredrights=false, $redirectonbad=true) {
+		if (!$this->authenticateduser) $this->showLogin();
+		if (!$requiredrights) return true;
+		return $this->checkRequiredRights($requiredrights, $redirectonbad);
+	}
+
+	public function hasLoadedRights($requiredrights) {
+
+		// The hasLoadedRights method is unnecessary; instead you should use checkRights,
+		// and pass 'false' as the second parameter
+		trigger_error("hasLoadedRights method in use", E_USER_DEPRECATED);
+
+		if ($requiredrights and !$this->rights) {
+			return false;
+		}
+
+		return $this->hasRights($requiredrights, $this->rights);
+	}
+
+	protected function checkRequiredRights($requiredrights, $redirectonbad) {
+		$isvalid = $this->hasRights($requiredrights, $this->rights);
+		if (!$isvalid and $redirectonbad) {
+			$this->showInsufficientRights($requiredrights);
+		} else {
+			return $isvalid;
+		}		
+	}
+
+	protected function hasRights($rightsrequired, $rightsheld) {
+		if (is_string($rightsrequired)) $rightsrequired = array($rightsrequired);
+		foreach($rightsrequired as $rightrequired) {
+			$isvalid=false;
+			while ($rightrequired) {
+				if (substr($rightrequired, strlen($rightrequired)-2, 2)==".*") {
+					$rightprefix = rtrim($rightrequired, "*");
+					if (is_array($rightsheld)) {
+						foreach ($rightsheld as $rightheld) {
+							if (strpos($rightheld, $rightprefix) === 0) {
+								$isvalid = true;
+								break;
+							}
+						}
+					}
+					$rightrequired = rtrim($rightrequired, "*.");
+				} else {
+					if (in_array($rightrequired, $rightsheld)) {
+						$isvalid = true;
+						break;
+					}
+					$rightrequired = (preg_match("/^(.*?)\.[^\.]+$/", $rightrequired, $m)) ? $m[1] : false;
+				}
+			}
+			if (!$isvalid) break;
+		}
+		return $isvalid;
+	}
+
+	protected function showLogin() {
+		header("Content-type: text/html");
+		if ($this->html_login and is_file($this->html_login)) {
+			readfile($this->html_login);
+		} else {
+			?>
+			<!DOCTYPE html public "-//w3c//dtd html 4.01 transitional//en" "http://www.w3.org/tr/1999/rec-html401-19991224/loose.dtd">
+			<html>
+			<head>
+			<title>Login required</title>
+			</head>
+			<body><h1>Login required</h1><hr>You must supply a valid username and password to access this system.  If your browser did not ask you for one, or you have forgotten your details, you are advised to contact the administrator for assistance.</body>
+			</html>
+			<?php
+		}
+		exit;
+	}
+
+	protected function showInsufficientRights($rightrequired) {
+		header("Content-type: text/html");
+		if ($this->html_insufficientrights and is_file($this->html_insufficientrights)) {
+			readfile($this->html_insufficientrights);
+		} else {
+			?>
+			<!DOCTYPE html public "-//w3c//dtd html 4.01 transitional//en" "http://www.w3.org/tr/1999/rec-html401-19991224/loose.dtd">
+			<html>
+			<head>
+			<title>Not allowed</title>
+			</head>
+			<body><h1>Not allowed</h1><hr>Your user account is not permitted access to this feature.
+			<p>
+			Rights you need: <?=print_r($rightrequired, true)?><br/>
+			Rights you have: <?=print_r($this->rights, true)?>
+			</p>
+			</body>
+			</html>
+			<?php
+		}
+		exit;
+	}
+
+	protected function showLogout() {
+		header("Content-type: text/html");
+		if ($this->html_logout and is_file($this->html_logout)) {
+			readfile($this->html_logout);
+		} else {
+			?>
+			<!DOCTYPE html public "-//w3c//dtd html 4.01 transitional//en" "http://www.w3.org/tr/1999/rec-html401-19991224/loose.dtd">
+			<html>
+			<head>
+			<title>Logout complete</title>
+			</head>
+			<body><h1>Logout complete</h1><hr>You have signed out successfully.</body>
+			</html>
+			<?php
+		}
+		exit;
+	}
+
+	public function logout($redirect=true) {
+		session_destroy();
+		$this->user = false;
+		$this->authenticateduser = false;
+		if ($redirect) $this->showLogout();
+	}
+	
+	public function useDBTable($tablename) {
+		$this->_dbtable = $tablename;
+	}	
+}

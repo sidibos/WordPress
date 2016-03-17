@@ -1,0 +1,113 @@
+<?php
+/**
+ * Provides a browser interface to select a file or folder within
+ * the CMS structure, returning details of the item selected to the
+ * calling page. This file does nothing much except for providing an
+ * interface shell and javascript proxy for browseinner.
+ *
+ * Accepted Inputs: (GET)	ret - an item to retur, eg an id so that
+ * results can be 			matched to the originating item for display
+ * (GET)	tag - tag of the current item, used to highlight/match
+ * (GET)	type - use of the dialog - eg move, create (GET)	title -
+ * text to display at the bottom of the dialog (GET)	height - Height
+ * of the browseinner frame to draw
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once("../lib/inc/global");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+$auth->checkRights("outline.user");
+
+// Set the site id locally
+$siteid = ((!empty($_GET["siteid"]) and $_GET["siteid"] != "-1")?$_GET["siteid"]:(!empty($_SESSION["outline"]["browsesiteid"])?$_SESSION["outline"]["browsesiteid"]:$_SESSION["outline"]["currentsite"]));
+if (empty($_SESSION["outline"]["browsesiteid"])) $_SESSION["outline"]["browsesiteid"] = $siteid;
+
+$browsetitle = array("new"=>"Please select where to place the new page", "edit"=>"Please select where to locate this page", "link"=>"Please select which page to link to", "permissions"=>"Please select where to apply permissions for", "other"=>"Please select the appropriate site area");
+
+// If this is a link, attempt to be able to select the correct site for display.
+if (!empty($_GET["type"]) and $_GET["type"] == "link" and !empty($_GET["tag"])) {
+	$siterow = $db->queryRow("SELECT s.id, s.webroot, (s.id='".$db->sqlenc($_SESSION["outline"]["browsesiteid"])."') as matchessession FROM out_sites s LEFT JOIN out_items i ON s.id=i.siteid LEFT JOIN out_localcontent l ON i.id=l.itemid WHERE CONCAT('/', s.webroot, '/', l.tag, '/') = '".$db->sqlenc($_GET["tag"])."' ORDER BY matchessession DESC LIMIT 1");
+	if ($siterow) {
+		$siteid = $siterow["id"];
+		$_GET["tag"] = substr($_GET["tag"], strlen($siterow["webroot"])+2);
+	}
+}
+if (!empty($_GET["tag"]) and substr($_GET["tag"], -1, 1) == "/") $_GET["tag"] = substr($_GET["tag"], 0, -1);
+
+// Proceed to set up the page and lay out common javascript, as well
+// as some styles required only on this page.
+?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<base href="<?=$page->getAppRootURI()?>" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<title>Outline Browser</title>
+<script type="text/javascript" src="lib/js/outline"></script>
+<script type="text/javascript">
+	var detailToReturn = "<?=((empty($_GET["ret"]))?"":$_GET["ret"])?>";
+	var selectedLocalContentId = 0;
+	var selectedItemTag = "";
+	var selectedTitle = "";
+	var selectedSite = '<?=$siteid?>';
+	var selectedSiteName = '<?=$_SESSION["outline"]["sites"][$siteid]["name"]?>';
+	var selectedSiteRoot = '<?=$_SESSION["outline"]["sites"][$siteid]["webroot"]?>';
+	
+	// Safari <= 1.3 appears to include the titlebar in the window
+	// height; adjust height to correct for this.
+	ua = navigator.userAgent.toLowerCase();
+	if (ua.indexOf('webkit') + 1) {
+		window.resizeTo(window.outerWidth, window.outerHeight + 22);
+	}
+</script>
+<style type="text/css">
+	body {
+		font-family: sans-serif;
+		background-color: #dedede;
+		font-size: 12px;
+		padding: 0;
+		margin: 0;
+	}
+	.butn {
+		width: 10em;
+		margin-left: 10px;
+		border: #7a7261 1px solid;
+		color: #504845;
+		background-color: #cec6b5;
+		padding: 1px;
+	}
+	.butndisabled {
+		width: 10em;
+		margin-left: 10px;
+		border: #aaa290 1px solid;
+		color: #a09895;
+		background-color: #eee6d8;
+		padding: 1px;
+	}
+</style>
+</head>
+<body>
+<div style="border-bottom: 1px solid #cec6b5; padding: 3px 10px 3px 10px; background-color: #dedede; color: #504845; font-weight: bold; font-size: 14pt;">
+Select Location
+</div>
+<iframe name="browseframe" src="browse/browseinner?tag=<?=(empty($_GET["tag"])?"":$_GET["tag"])?>&type=<?=(empty($_GET["type"])?"":$_GET["type"])?>&siteid=<?=$siteid?>&extra=<?=(empty($_GET["ret"])?"":$_GET["ret"])?>" style="border: 0; width: 100%; height: <?=(empty($_GET["height"])?"200":$_GET["height"])?>px; overflow: auto;">
+</iframe><br />
+<div style="border-top: 1px solid #cec6b5; padding: 7px 10px 7px 10px; background-color: #dedede;">
+<form style="margin: 0; padding: 0;">
+<div style="padding: 5px; float: left;"><?=$browsetitle[(empty($_GET["type"])?"edit":$_GET["type"])]?></div>
+<div style="float: right;">
+<input type="button" id="selectbutton" class="butndisabled" value="Select" onclick="window.opener.olhandler.browseReturn(selectedLocalContentID, selectedItemTag, selectedTitle, detailToReturn, selectedSite, selectedSiteName, selectedSiteRoot); self.close();" disabled="true" /><input type="button" id="cancelbutton" class="butn" value="Cancel" onclick="self.close();"/>
+</div>
+<br style="clear: both;" />
+</form>
+</div>
+</body>
+</html>

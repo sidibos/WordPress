@@ -1,0 +1,145 @@
+<?php
+require_once("../appglobal");
+require_once($_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/errorhandler');
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+$log = $sdb->queryRow("SELECT id, requestid, log FROM debuglogs WHERE {id}", $_REQUEST);
+if (!$log) exit("Log not found");
+
+$request = $sdb->queryRow("SELECT title, client, project FROM requests WHERE id={requestid|nokey}", $log);
+if (!$request) exit("Request not found");
+
+// Get permission levels before proceeding, to check whether the user has the authority to view this debug log
+$isdeveloper = $sdb->queryRow("SELECT isdeveloper FROM permissions WHERE userid=".$_SESSION["support"]["userid"]." AND ((client='".$request["client"]."' AND project='".$request["project"]."') OR (client='".$request["client"]."' AND project IS NULL) OR (client IS NULL AND project IS NULL)) ORDER BY (project IS NOT NULL AND client IS NOT NULL) DESC, (client IS NOT NULL) DESC LIMIT 1");
+
+if (!$isdeveloper) exit("Sorry, you do not have permission to view debug logs");
+
+if (strpos($log['log'], '{') === 0) {
+	echo ErrorHandlerV5::errorReportPage(json_decode($log['log'], true));
+} else {
+	?>
+	<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+	<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<style type="text/css">
+		body { font-family: sans-serif; font-size: 11px; color: #666; line-height: normal; margin: 0; padding: 0 }
+		ul.tree { font-family: sans-serif; font-size: 11px; line-height: normal; margin: 0 0 0 130px; padding: 10px; }
+		ul.tree ul { margin: 0 0 0 18px; padding: 0; background: url(/corestatic/imgs/treeview/line.gif) repeat-y; }
+		ul.tree li { margin: 0; padding: 0; list-style-type: none; line-height: normal; }
+		ul.tree ul li { background: url(/corestatic/imgs/treeview/join.gif) no-repeat; }
+		ul.tree li span { display: block; background: url(/corestatic/imgs/treeview/base.gif) 18px 0 no-repeat; padding: 2px 0 2px 36px; line-height: normal; }
+		ul.tree ul li span { background: url(/corestatic/imgs/treeview/page.gif) 18px 0 no-repeat; }
+		</style>
+		<script type="text/javascript" src="/corestatic/javascript/jquery/1.2.2.js"></script>
+		<script type="text/javascript">
+			var path = '/corestatic/imgs/treeview/';
+			$(document).ready(function(){ 
+	
+				// Find all lists on the page
+				var uls = document.getElementsByTagName("UL");
+				for (var i=0; i<uls.length; i++) {
+					if (uls[i].className == "tree") {
+						
+						// Activate this tree - loop through the nodes
+						processLevel(uls[i], 0);
+					}
+				}
+			});
+	
+			function processLevel(ele,level) {
+				var li = ele.firstChild;
+				if (!li) return;
+				if (level > 1) ele.style.display = "none";
+				do {
+					if (li.tagName == "LI") {
+						var children = li.getElementsByTagName("UL");
+						if (level > 0) {
+							if (children.length > 0) {
+								var f = folderClick(li);
+								li.firstChild.onclick = f;
+								setNodeStyle(li, "plus");
+							} else {
+								setNodeStyle(li, "join");
+							}
+						}
+						if (li.className=="open") {
+							var parnode = li;
+							var plevel = level;
+							while (parnode=parnode.parentNode) {
+								if (parnode.tagName=="UL") {
+									parnode.style.display = "block";
+									plevel--;
+									if (plevel > 0) setNodeStyle(parnode.parentNode, "minus");
+								}
+							}
+						}
+						if (children.length > 0) processLevel(children[0], (level+1));
+					}
+				} while (li=li.nextSibling);
+			}
+	
+			function folderClick(el) {
+				return (function() {
+					var children = el.getElementsByTagName("UL");
+					if (children[0].style.display=="block") {
+						setNodeStyle(el, "plus", islast(el));
+						$(children[0]).hide();
+					} else {
+						setNodeStyle(el, "minus");
+						$(children[0]).show();
+					}
+				});
+			}
+	
+			function islast(el) {
+				var islast = 1; var nextel = el;
+				for (var i=0; i<=5; i++) {
+					if (!(nextel=nextel.nextSibling)) break;
+					if (nextel.tagName=="LI") {
+						islast = 0;
+						break;
+					}
+				}
+				return islast;
+			}
+	
+			function setNodeStyle(el, icon) {
+				el.style.backgroundColor = (islast(el)) ? "white" : "transparent";
+				el.style.backgroundImage = "url("+path+icon+((islast(el))?"bottom":"")+".gif)";
+				if (icon=="plus") el.firstChild.style.backgroundImage = "url("+path+"folder.gif)";
+				if (icon=="minus") el.firstChild.style.backgroundImage = "url("+path+"folderopen.gif)";
+				if (icon=="join") el.firstChild.style.backgroundImage = "url("+path+"page.gif)";
+			}
+		</script>
+	</head>
+	<body>
+	<ul class="tree"><li>
+	<?php
+	echo '';
+	if (strpos($log['log'], "<Errordetail") !== false) {
+		$err = Common::xml2array($log);
+		echo $eh->generateTree($err);
+	} elseif(strpos($log['log'], "<ul>") === 0) {
+		echo $log['log'];
+	} else {
+		$err = false;
+		eval("\$err = ".$log['log'].";");
+		echo $eh->generateTree($err);
+	}
+
+	?>
+	</li></ul>
+	</body>
+	</html>
+	<?php
+}
+?>

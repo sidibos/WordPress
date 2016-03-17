@@ -1,0 +1,209 @@
+<?php
+/**
+ * A static class to provide the best practice method of setting
+ * cache headers on output
+ *
+ * Note that while it would be useful to be able to call
+ * outputHeaders automatically when the script finishes, this cannot
+ * be done because (a) this is a static class, and static classes
+ * cannot have destructors, and (b) even if this was an instance
+ * class, destructors on objects are called *after* HTTP headers
+ * have been sent.
+ *
+ * NB. In future, Varnish might drift to use a published (albeit
+ * unused) standard for the 'Surrogate-Control' header, rather than
+ * using our invented 'X-Internal/External' headers.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+class CacheabilityV1 {
+
+	const EXPIRES = 'Expires';
+	const CACHE_CONTROL = 'Cache-Control';
+	const X_EXTERNAL_CACHE_CONTROL = 'X-External-Cache-Control';
+	const X_INTERNAL_TTL = 'X-Internal-TTL';
+	const X_NO_CACHE = 'X-No-Cache';
+	const X_CACHE_POLICY = 'X-Cache-Policy';
+
+	private static $varnishsec = null, $externalsec = null, $revalidate = true, $private = false;
+	private static $sentHeaders = false;
+	const VARNISH_ADDR_PATH = '/etc/sysconfig/ftlabs/varnish-servers';
+
+	public static function setVarnishExpiryTime($sec) {
+		if (!is_numeric($sec)) trigger_error('Expiry TTL must be a number of seconds', E_USER_ERROR);
+		self::$varnishsec = floor($sec);
+	}
+
+	public static function setExternalExpiryTime($sec) {
+		if (!is_numeric($sec)) trigger_error('Expiry TTL must be a number of seconds', E_USER_ERROR);
+		self::$externalsec = floor($sec);
+	}
+
+	public static function setMustRevalidate($newval) {
+		self::$revalidate = !!$newval;
+	}
+
+	public static function getVarnishExpiryTime() {
+		return self::$varnishsec;
+	}
+
+	public static function getExternalExpiryTime() {
+		return self::$externalsec;
+	}
+
+	public static function setPrivate($newval) {
+		self::$private = !!$newval;
+	}
+
+	public static function reset() {
+		self::$varnishsec = null;
+		self::$externalsec = null;
+		self::$revalidate = true;
+		self::$private = false;
+	}
+
+	public static function outputHeaders() {
+
+		if (headers_sent($file, $line)) {
+			trigger_error('Cannot send cacheability headers - output already started at '.$file.':'.$line, E_USER_NOTICE);
+			return false;
+		}
+		$headers = self::getHeaders();
+		foreach($headers as $id => $each) {
+			header($id . ': ' . $each);
+		}
+		self::$sentHeaders = true;
+	}
+
+	public static function getHeaders() {
+		$headers = array();
+
+		$reval = self::$revalidate ? ', must-revalidate' : '';
+		$nocache = 'no-cache, no-store, max-age=0, must-revalidate, no-transform';
+		$publicprivate = self::$private ? 'private' : 'public';
+
+		// Response should not be cached at all
+		if (!self::$varnishsec and !self::$externalsec) {
+
+			// Note that Varnish intercepts the X-No-Cache header and then re-writes the
+			// cache-control and expires headers.  They're just sent to help development
+			// or production use when Varnish isn't in front of the website.  However, the
+			// likelihood of this is low, and perhaps it ought to be reconsidered.
+			$headers[self::CACHE_CONTROL] = $nocache;
+			$headers[self::EXPIRES] = 'Mon, 26 Jul 1997 05:00:00 GMT';
+			$headers[self::X_NO_CACHE] = '1';
+			$headers[self::X_EXTERNAL_CACHE_CONTROL] = $nocache;
+
+		// Response should be cached for a specified period by external caches only, not Varnish
+		} elseif (!self::$varnishsec) {
+			$headers[self::CACHE_CONTROL] = $nocache;
+			$headers[self::EXPIRES] = 'Mon, 26 Jul 1997 05:00:00 GMT';
+			$headers[self::X_INTERNAL_TTL] = '0';
+			$headers[self::X_EXTERNAL_CACHE_CONTROL] = $publicprivate.', max-age='.self::$externalsec.$reval.', no-transform';
+
+		// Response should be cached for a specified period by Varnish, but should not be cachable externally
+		} elseif (!self::$externalsec) {
+			$headers[self::CACHE_CONTROL] = $publicprivate.', max-age='.self::$varnishsec.$reval.', no-transform';
+			$headers[self::EXPIRES] = date('r', time()+self::$varnishsec);
+			$headers[self::X_INTERNAL_TTL] = self::$varnishsec;
+			$headers[self::X_EXTERNAL_CACHE_CONTROL] = $nocache;
+
+		// Response should be cached for a specified period by varnish and external caches
+		} else {
+			$headers[self::CACHE_CONTROL] = $publicprivate.', max-age='.self::$varnishsec.$reval.', no-transform';
+			$headers[self::EXPIRES] = date('r', time()+self::$varnishsec);
+			$headers[self::X_INTERNAL_TTL] = self::$varnishsec;
+			$headers[self::X_EXTERNAL_CACHE_CONTROL] = $publicprivate.', max-age='.self::$externalsec.$reval.', no-transform';
+		}
+		$headers[self::X_CACHE_POLICY] = 'manual';
+		return $headers;
+	}
+
+	public static function purgeVarnishCache($path, $host = "unspecified") {
+
+		// REVIEW:LB:20120926: If this function is ever used with user input, there is potential for a varnish config injection attack vunerability
+		if ($host == "unspecified") {
+			trigger_error("HTTP host not specified when purging Varnish. This fails safe, but must be fixed.", E_USER_NOTICE);
+			$purgeparam = "ban req.url ~ ".$path.".*";
+		} else {
+			$purgeparam = "ban req.http.host ~ ".$host." && req.url ~ ".$path.".*";
+		}
+		self::sendVarnishCommandToAllNodes($purgeparam);
+	}
+
+	/**
+	 * Sends a command to varnish to instruct it to ban all repsonses which include a given http header
+	 *
+	 * @param array  $headers A list of key/value pairs of HTTP Headers (Keys are not sanitised, so should not depend on user input; Values are sanitised and do an exact comparison with the cached value)
+	 * @param string $host    The host to match (regex is acceptable here - note, this should not be user input, unless it has been sanitised first)
+	 */
+	public static function purgeVarnishCacheByHeaders(array $headers, $host) {
+		return self::purgeVarnishCacheUsingHeaders($headers, $host, "exact");
+	}
+
+	public static function purgeVarnishCacheByHeaderPatterns(array $headers, $host) {
+		return self::purgeVarnishCacheUsingHeaders($headers, $host, "regex");
+	}
+
+	private static function purgeVarnishCacheUsingHeaders(array $headers, $host, $type) {
+		$command = "ban req.http.host ~ \"$host\"";
+		foreach ($headers as $name => $value) {
+			$value = str_replace("\n", ' ', addcslashes($value, '"'));
+			$command .= " && obj.http.$name ".(($type == "regex")?"~":"==")." \"$value\"";
+		}
+		self::sendVarnishCommandToAllNodes($command);
+	}
+
+	private static function sendVarnishCommandToAllNodes($command) {
+		if (file_exists(self::VARNISH_ADDR_PATH)) {
+			$ipaddresses = explode("\n", file_get_contents(self::VARNISH_ADDR_PATH));
+		} else {
+			$ipaddresses = array();
+		}
+		foreach ($ipaddresses as $ipaddress) {
+			if (empty($ipaddress)) continue;
+			self::sendVarnishCommand($command, $ipaddress);
+			$addressfound = true;
+		}
+
+		// If there's nothing listed in the varnish servers file, then trigger a notice and fall back to the local server
+		if (empty($addressfound)) {
+			trigger_error("No ip addresses found in ".self::VARNISH_ADDR_PATH, E_USER_NOTICE);
+			self::sendVarnishCommand($command, isset($_SERVER['SERVER_ADDR']) ? $_SERVER['SERVER_ADDR'] : '127.0.0.1');
+		}
+
+	}
+
+	private static function sendVarnishCommand($command, $ip) {
+
+		pclose(popen('nohup /bin/echo -e '.escapeshellarg($command).' 2>/dev/null | nc '.$ip.' 6082 2>&1 >/dev/null &','r'));
+	}
+
+	public static function purgeEdgecastCache($path) {
+		// REVIEW:AB:20091002: Remember that Edgecast does not accept regexes in purge requests!
+		trigger_error('purgeEdgecastCache called with '.$path.' but function not implemented. Cache not purged',E_USER_NOTICE);
+	}
+
+
+	/* Shortcut functions */
+
+	public static function noCache() {
+		self::setVarnishExpiryTime(0);
+		self::setExternalExpiryTime(0);
+		self::outputHeaders();
+	}
+
+	public static function expiresAfter($sec) {
+		self::setVarnishExpiryTime($sec);
+		self::setExternalExpiryTime($sec);
+		self::outputHeaders();
+	}
+
+	public static function purgeCache($path, $host = 'unspecified') {
+		self::purgeVarnishCache($path, $host);
+		self::purgeEdgecastCache($path, $host);
+	}
+}
+
+if (!class_exists('Cacheability')) class_alias('CacheabilityV1', 'Cacheability');
