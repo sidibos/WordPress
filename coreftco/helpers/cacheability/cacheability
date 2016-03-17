@@ -1,3 +1,0 @@
-<?php
-// REVIEW:MA:20130711 Do we need this?
-require $_SERVER['CORE_PATH'] . "/helpers/cacheability/v1/cacheability";

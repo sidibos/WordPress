@@ -1,0 +1,655 @@
+<?php
+/**
+ * Classes for connecting to a beanstalk message queue
+ *
+ * The classes BeanstalkPool, BeanstalkConnection and BeanstalkJob are included.  A Pool class provides a proxy to a pool of Beanstalk nodes for common operations.  Individual BeanstalkConnections can be used to talk to specific servers.  And a BeanstalkJob represents a single job from the queue, with it's parent connection embedded.
+ *
+ * Example use cases:
+ *
+ * $bs = new BeanstalkPool();  // By default, pool contains beanstalk-a and beanstalk-b
+ * $bs->useTube('assanka-mailgun');
+ * $bs->put('hello');  // First param is data.  Optional subsequent params are priority, delay and TTR
+ *
+ * $bs = new BeanstalkPool();
+ * $bs->watch('assanka-mailgun');   // The 'default' tube is ignored automatically
+ * while ($job = $bs->reserve(60)) {
+ *   echo $job->getID().": ".$job->getBody();
+ *   $job->delete();
+ * }
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+
+class BeanstalkPoolV2 {
+
+	private $persist = true, $hosts = array('beanstalk-a:11300', 'beanstalk-b:11300'), $selecttimeout = 30, $maxreserve = 0;
+	private $connections = array(), $lastconn = null, $selecttime = 0, $watchlist = array('default' => 'ignore'), $using = null;
+	private $connections_full = array();
+
+	/**
+	 * Create a BeanstalkPool
+	 *
+	 * @param array $config An array of configuration values.  Possible keys are persist (boolean), hosts (array), timeout (integer)
+	 * @return void
+	 */
+	public function __construct(array $config=array()) {
+		if (isset($config['persist'])) $this->persist = (bool)$config['persist'];
+		if (isset($config['hosts']) and (is_string($config['hosts']) or is_array($config['hosts']))) {
+			if (is_string($config['hosts'])) $config['hosts'] = array($config['hosts']);
+			$this->hosts = $config['hosts'];
+		}
+		if (isset($config['selecttimeout'])) $this->selecttimeout = $config['selecttimeout'];
+		if (isset($config['maxreserve'])) $this->maxreserve = $config['maxreserve'];
+		foreach ($this->hosts as $host) {
+			if (!preg_match("/^[a-z0-9\-\.]+\:\d+$/", $host)) throw new BeanstalkConnectionException('Invalid hostname');
+			$this->connections[$host] = null;
+		}
+	}
+
+	public function __call($n, $args) {
+		if (in_array($n, array('watch', 'ignore'))) {
+			$this->watchlist[$args[0]] = $n;
+		} elseif ($n == 'useTube') {
+			$this->using = $args[0];
+		} elseif (in_array($n, array('put', 'reserve', 'kick'))) {
+			$conn = $this->randConn();
+			try {
+				if ($n == 'put') {
+					$conn->useTube($this->using);
+				} elseif ($n == 'reserve') {
+
+					// If subject to a limit on number of jobs that may be reserved concurrently, check how many there are already (including waiting workers that would be in a position to reserve a job if one became available)
+					if ($this->maxreserve) {
+						foreach ($this->watchlist as $tube => $action) {
+							if ($action != "watch") continue;
+							$stats = $conn->statsTube($tube);
+							if (($stats['current-jobs-reserved'] + $stats['current-waiting']) >= $this->maxreserve) {
+
+								// Although there may be jobs available, don't reserve one since to do so would exceed the maximum number of jobs that may be reserved concurrently
+								$this->connections_full[$conn->getHost()] = true;
+								throw new BeanstalkConnectionException("Too many reserved jobs");
+							}
+						}
+					}
+
+					// Watch tubes: ensure watches are done before ignores
+					arsort($this->watchlist);
+					foreach ($this->watchlist as $tube => $action) $conn->$action($tube);
+				}
+
+				// Call the requested function
+				$ret = call_user_func_array(array($conn, $n), $args);
+
+				// If a reserve times out, then decide whether to stick to the current connection or pick a random new one
+				if ($n === 'reserve' and $ret === false) {
+
+					// The default behaviour is to pick a random new connection after a timeout so that all the processes don't end up on the same connection
+					$sticktoconnection = false;
+
+					// Iterate through the stats for all the tubes being watched
+					foreach ($this->watchlist as $tube => $action) {
+						if ($action != "watch") continue;
+						$stats = $conn->statsTube($tube);
+
+						// If there are no other processes available to take new jobs, then this process should stick to it to prevent jobs building up in the queue.
+						if ($stats['current-waiting'] == 0) {
+							$sticktoconnection = true;
+							break;
+						}
+					}
+					if ($sticktoconnection) {
+
+						// To ensure this connection is reused next time, reset the select time
+						$this->selecttime = time();
+					} else {
+
+						// Set the connection to null, so that it doesn't get reused and a random one is picked
+						$this->lastconn = null;
+					}
+				}
+				$this->connections_full = array();
+				return $ret;
+
+			// Only catch Connection Exceptions - protocol exceptions will bubble through to app
+			} catch (BeanstalkConnectionException $e) {
+
+				// Call this function again - won't result in a loop as the connection which errored will be blacklisted for 10 seconds
+				return call_user_func_array(array($this, $n), $args);
+			}
+		} elseif (in_array($n, array("delete", "release", "bury", "touch"))) {
+			throw new InvalidCallException('Job methods may only be invoked on a BeanstalkJob');
+		} else {
+			throw new InvalidCallException("Not a pool method: {$n}");
+		}
+	}
+
+	/**
+	 * Disconnect all connections in the pool
+	 *
+	 * @return void
+	 */
+	public function disconnect() {
+		foreach ($this->connections as $host=>$conn) {
+			if ($conn) $conn->disconnect();
+			$this->connections[$host] = null;
+		}
+		$this->lastconn = null;
+	}
+
+	/**
+	 * Return a random connected BeanstalkConnection from the pool
+	 *
+	 * @return void
+	 */
+	private function randConn() {
+		if ($this->lastconn and !$this->lastconn->isBlacklisted() and empty($this->connections_full[$this->lastconn->getHost()]) and (time() - $this->selecttime) < $this->selecttimeout) {
+			return $this->lastconn;
+		}
+		$hosts = array_keys($this->connections);
+		shuffle($hosts);
+
+		// Loop over connections in a random order until one is found that is connected and not blacklisted or full
+		foreach ($hosts as $host) {
+
+			// Connect any servers that are yet to connect
+			if ($this->connections[$host] == null) {
+				try {
+					$this->connections[$host] = new BeanstalkConnectionV2($host);
+				} catch (Exception $e) {
+					$this->connections[$host] = null;
+				}
+			}
+			if ($this->connections[$host] and empty($this->connections_full[$host]) and !$this->connections[$host]->isBlacklisted()) {
+				$this->selecttime = time();
+				$this->lastconn = $this->connections[$host];
+				return $this->connections[$host];
+			}
+		}
+		if (count($this->connections_full) == count($this->connections)) {
+			$this->connections_full = array();
+			throw new BeanstalkConnectionException("All connections full");
+		} else {
+			throw new BeanstalkConnectionException("No servers available eh:noreport eh:tolerance=5/day");
+		}
+	}
+
+	public function getDebug() {
+		$op = array();
+		if ($this->lastconn) {
+			$op["host"] = $this->lastconn->getHost();
+			$op = array_merge($op, $this->lastconn->stats());
+			$op["tube"] = $this->lastconn->listTubeUsed();
+			if ($op["tube"]) $op = array_merge($op, $this->lastconn->statsTube($op["tube"]));
+		} else {
+			$op["host"] = null;
+		}
+		return $op;
+	}
+}
+
+class BeanstalkConnectionV2 {
+
+	private $persist = false, $host, $timeout = 1;
+	private $connection, $isconnected = false, $watchlist = array(), $using = null;
+	private $defaultPriority = 5000, $defaultTtr = 120, $defaultDelay = 0;
+
+	/**
+	 * Create a BeanstalkConnection
+	 *
+	 * @param array $host_or_options An array of configuration values, or a hostname.  If a configuration array, possible keys are persist (boolean), host (string), timeout (integer)
+	 * @return void
+	 */
+	public function __construct($host_or_options) {
+		$config = is_array($host_or_options) ? $host_or_options : array('host' => $host_or_options);
+		if (isset($config['persist'])) $this->persist = (bool)$config['persist'];
+		if (isset($config['host']) and is_string($config['host'])) $this->host = $config['host'];
+		if (isset($config['timeout']) and is_numeric($config['timeout'])) $this->timeout = $config['timeout'];
+		if (strpos($this->host, ':') === false) throw new BeanstalkConnectionException('Host must specify port');
+		$this->connect();
+	}
+
+	/**
+	 * Destructor, disconnects from the server.
+	 *
+	 * @return void
+	 */
+	public function __destruct() { $this->disconnect(); }
+
+	/**
+	 * Initiates a socket connection to the beanstalk server.
+	 *
+	 * @return boolean `true` if the connection was established, otherwise throws BeanstalkConnectionException.
+	 */
+	public function connect() {
+		if (isset($this->connection)) $this->disconnect();
+		list($host, $port) = explode(":", $this->host, 2);
+		$function = $this->persist ? 'pfsockopen' : 'fsockopen';
+		$params = array($host, $port, &$errNum, &$errStr, $this->timeout);
+		$this->connection = @call_user_func_array($function, $params);
+
+		$this->isconnected = (is_resource($this->connection) and empty($errNum));
+		if ($this->isconnected) {
+			stream_set_timeout($this->connection, -1);
+		} else {
+			$this->blacklistUntil = time() + 10;
+			throw new BeanstalkConnectionException('Failed to connect', 0, null, get_defined_vars());
+		}
+		return $this->isconnected;
+	}
+
+	/**
+	 * Returns true if connected to the Breanstalk server
+	 *
+	 * @return boolean
+	 */
+	public function isConnected() { return $this->isconnected; }
+
+	/**
+	 * Returns true if the Breanstalk server has been blacklisted because of an error
+	 *
+	 * @return boolean
+	 */
+	public function isBlacklisted() {
+		if (empty($this->blacklistUntil)) return false;
+		if ($this->blacklistUntil > time()) return true;
+		unset($this->blacklistUntil);
+		return false;
+	}
+
+	/**
+	 * Closes the connection to the beanstalk server.
+	 *
+	 * @return boolean `true` if disconnecting was successful.
+	 */
+	public function disconnect() {
+		if (!is_resource($this->connection)) {
+			$this->isconnected = false;
+		} else {
+			$this->isconnected = !fclose($this->connection);
+		}
+		if (!$this->isconnected) {
+			$this->connection = null;
+
+			// Clear the watchlist so that watch commands are re-sent after connecting again
+			$this->watchlist = array();
+			$this->using = null;
+		}
+		return !$this->isconnected;
+	}
+
+	/**
+	 * Writes a packet to the socket. Prior to writing to the socket will check
+	 * for availability of the connection.
+	 *
+	 * @param string $data Data to write to the socket
+	 * @return integer|boolean number of written bytes or `false` on error.
+	 */
+	private function write($data) {
+		if ($this->isBlacklisted()) throw new BeanstalkConnectionException("Failed to Connect");
+		if (!$this->isconnected) $this->connect();
+		$res = @fwrite($this->connection, $data."\r\n", strlen($data) + 2);
+
+		// According to docs, fwrite should return false on error.  It actually returns zero.
+		if (!$res) {
+
+			// If an error has occured, disconnect this connection and blacklist for 10 seconds
+			$this->disconnect();
+			$this->blacklistUntil = time() + 10;
+		}
+		return $res;
+	}
+
+	/**
+	 * Reads a packet from the socket. Prior to reading from the socket will
+	 * check for availability of the connection.
+	 *
+	 * @param int $length Number of bytes to read.
+	 * @return string|boolean Data or `false` on error.
+	 */
+	private function read($length = null) {
+		if (!$this->isconnected and !$this->connect()) return false;
+		if ($length) {
+			if (feof($this->connection)) return false;
+			$packet = '';
+			while (strlen($packet) < $length) {
+				$meta = stream_get_meta_data($this->connection);
+				if ($meta['timed_out']) {
+					throw new BeanstalkConnectionException('Connection timed out');
+					return false;
+				}
+				$packet .= fread($this->connection, $length - strlen($packet) + 2);
+			}
+		} else {
+			$meta = stream_get_meta_data($this->connection);
+			if ($meta['timed_out']) {
+				throw new BeanstalkConnectionException('Connection timed out');
+				return false;
+			}
+			$packet = fgets($this->connection);
+		}
+		return rtrim($packet, "\r\n");
+	}
+
+	/**
+	 * Invoke a Beanstalk method and interpret the response
+	 *
+	 * Although public, this method must only be called from within BeanstalkConnection and BeanstalkJob objects
+	 *
+	 * @param string $send    The command to send
+	 * @param string $resppat The expected response - either 'job', 'yaml' or a regular expression (first capturing subpattern will be returned)
+	 * @return mixed YAML data as an array, a BeanstalkJob object, the first capturing subpattern from the regex, or true, as appropriate.  False on failure
+	 */
+	public function interact($send, $resppat=null) {
+		if (!$this->write($send)) return false;
+		$resp = $this->read();
+		$status = strtok($resp, ' ');
+		if ($resppat == 'job' and in_array($status, array('RESERVED', 'FOUND'))) {
+			return new BeanstalkJobV2((integer)strtok(' '), $this->read((integer)strtok(' ')), $this, ($status == 'RESERVED'));
+		} elseif ($resppat == 'yaml' and $status == 'OK') {
+			$data = $this->read((integer)strtok(' '));
+			return $this->decodeYaml($data);
+		} elseif (!$resppat or ($resppat[0] == '/' and preg_match($resppat, $resp, $m))) {
+			return empty($m[1]) ? true : $m[1];
+		} elseif ($status == 'DEADLINE_SOON') {
+			throw new BeanstalkProtocolException('Deadline soon');
+		} elseif ($status == 'JOB_TOO_BIG') {
+			throw new BeanstalkProtocolException('Job size exeeds max-job-size');
+		} else {
+			$trimcmd = ($nlpos = strpos($send,'\n')) ? substr($send, 0, $nlpos) : $send;
+			$trimresp = (strlen($resp) > 50) ? substr($resp, 0, 47).'...' : $resp;
+			if ($status != 'TIMED_OUT' and $status != 'NOT_FOUND' and !empty($resp)) {
+				throw new BeanstalkProtocolException('Protocol error', 0, null, "Sent ".$trimcmd.", expected ".$resppat.", got ".$trimresp);
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * Insert a job into the queue
+	 *
+	 * @param string  $data  The job body.
+	 * @param integer $pri   Jobs with smaller priority values will be scheduled before jobs with larger priorities. The most urgent priority is 0; the least urgent priority is 4294967295.  Leave blank to use default.
+	 * @param integer $delay Seconds to wait before putting the job in the ready queue.  The job will be in the "delayed" state during this time.  Leave blank to use default.
+	 * @param integer $ttr   Time to run - Number of seconds to allow a worker to run this job.  The minimum ttr is 1.  Leave blank to use default.
+	 * @return integer|boolean `false` on error otherwise an integer indicating the job id.
+	 */
+	public function put($data, $pri=null, $delay=null, $ttr=null) {
+		if (!$this->using) throw new Exception('Cannot put before using a tube');
+		if ($pri === null) $pri = $this->defaultPriority;
+		if ($delay === null) $delay = $this->defaultDelay;
+		if ($ttr === null) $ttr = $this->defaultTtr;
+		return $this->interact("put ".$pri." ".$delay." ".$ttr." ".strlen($data)."\r\n".$data, '/^(?:INSERTED|BURIED) (\d+)/');
+	}
+
+	/**
+	 * Reserve a job (optionally with a timeout)
+	 *
+	 * @param integer $timeout If given specifies number of seconds to wait for a job. 0 returns immediately if no job is available
+	 * @return BeanstalkJobV2|boolean A BeanstalkJob object or false if no job was reserved within the timeout period
+	 */
+	public function reserve($timeout = null) {
+		return $this->interact(is_null($timeout) ? 'reserve' : 'reserve-with-timeout '.$timeout, 'job');
+	}
+
+	/**
+	 * Select a tube in which subsequent PUT operations will place their jobs
+	 *
+	 * @param string $tube A name at most 200 bytes. It specifies the tube to use.  If the tube does not exist, it will be created.
+	 * @return boolean
+	 */
+	public function useTube($tube) {
+		if (empty($tube) or !is_string($tube)) throw new Exception('No tube specified');
+		if ($this->using === $tube) return true;
+		if ($this->interact('use '.$tube, '/^USING /')) {
+			$this->using = $tube;
+			return true;
+		}
+	}
+
+	/**
+	 * Adds the named tube to the watch list for the current connection.
+	 *
+	 * @param string $tube Name of tube to watch.
+	 * @return integer|boolean `false` on error otherwise number of tubes in watch list.
+	 */
+	public function watch($tube) {
+		if (!empty($this->watchlist[$tube]) and $this->watchlist[$tube] == 'watch') return true;
+		$this->watchlist[$tube] = 'watch';
+		return $this->interact('watch '.$tube, '/^WATCHING \d+/');
+	}
+
+	/**
+	 * Remove the named tube from the watch list.
+	 *
+	 * @param string $tube Name of tube to ignore.
+	 * @return integer|boolean `false` on error otherwise number of tubes in watch list.
+	 */
+	public function ignore($tube) {
+		if (!empty($this->watchlist[$tube]) and $this->watchlist[$tube] == 'ignore') return true;
+		$this->watchlist[$tube] = 'ignore';
+		return $this->interact('ignore '.$tube, '/^(NOT_IGNORED|WATCHING \d+)/');
+	}
+
+	/**
+	 * Inspect a job by its ID.
+	 *
+	 * @param integer $id The ID of the job.
+	 * @return BeanstalkJobV2|boolean A BeanstalkJob object or false on error
+	 */
+	public function peek($id) {
+		return $this->interact('peek '.$id, 'job');
+	}
+
+	/**
+	 * Inspect the next ready job.
+	 *
+	 * @return BeanstalkJobV2|boolean A BeanstalkJob object or false on error
+	 */
+	public function peekReady() {
+		return $this->interact('peek-ready', 'job');
+	}
+
+	/**
+	 * Inspect the job with the shortest delay left.
+	 *
+	 * @return BeanstalkJobV2|boolean A BeanstalkJob object or false on error
+	 */
+	public function peekDelayed() {
+		return $this->interact('peek-delayed', 'job');
+	}
+
+	/**
+	 * Inspect the next job in the list of buried jobs.
+	 *
+	 * @return BeanstalkJobV2|boolean A BeanstalkJob object or false on error
+	 */
+	public function peekBuried() {
+		return $this->interact('peek-buried', 'job');
+	}
+
+	/**
+	 * Moves jobs into the ready queue (applies to the current tube).
+	 *
+	 * If there are buried jobs those get kicked first, otherwise delayed jobs get kicked.
+	 *
+	 * @param integer $max Upper bound on the number of jobs to kick.
+	 * @return integer|boolean False on error otherwise number of jobs kicked.
+	 */
+	public function kick($max) {
+		return $this->interact('kick ' . $max, '/^KICKED (\d+)$/');
+	}
+
+	/**
+	 * Gives statistical information about the specified tube if it exists.
+	 *
+	 * @param string $tube Name of the tube.
+	 * @return array|boolean `false` on error otherwise an associative array of data
+	 */
+	public function statsTube($tube) {
+		return $this->interact('stats-tube '.$tube, 'yaml');
+	}
+
+	/**
+	 * Gives statistical information about the system as a whole.
+	 *
+	 * @return array|boolean `false` on error otherwise an associative array of data
+	 */
+	public function stats() {
+		return $this->interact('stats', 'yaml');
+	}
+
+	/**
+	 * Returns a list of all existing tubes.
+	 *
+	 * @return array|boolean `false` on error otherwise an associative array of data
+	 */
+	public function listTubes() {
+		return $this->interact('list-tubes', 'yaml');
+	}
+
+	/**
+	 * Returns the tube currently being used by the producer.
+	 *
+	 * @return string|boolean `false` on error otherwise a string with the name of the tube.
+	 */
+	public function listTubeUsed() {
+		return $this->interact('list-tube-used', '/^USING (.*)$/');
+	}
+
+	/**
+	 * Returns a list of tubes currently being watched by the worker.
+	 *
+	 * @return array|boolean `false` on error otherwise an associative array of data
+	 */
+	public function listTubesWatched() {
+		return $this->interact('list-tubes-watched', 'yaml');
+	}
+
+	/**
+	 * Decodes YAML data. This is a super naive decoder which just works on a subset of YAML which is commonly returned by beanstalk.
+	 *
+	 * @param string $data The data in YAML format, can be either a list or a dictionary.
+	 * @return array An (associative) array of the converted data.
+	 */
+	private function decodeYaml($data) {
+		$data = array_slice(explode("\n", $data), 1);
+		$result = array();
+		foreach ($data as $key => $value) {
+			if ($value[0] === '-') {
+				$value = ltrim($value, '- ');
+			} elseif (strpos($value, ':') !== false) {
+				list($key, $value) = explode(':', $value);
+				$value = ltrim($value, ' ');
+			}
+			if (is_numeric($value)) {
+				$value = (integer) $value == $value ? (integer) $value : (float) $value;
+			}
+			$result[$key] = $value;
+		}
+		return $result;
+	}
+
+	public function getDefaultPriority() { return $this->defaultPriority; }
+	public function getDefaultTtr() { return $this->defaultTtr; }
+	public function getDefaultDelay() { return $this->defaultDelay; }
+	public function getHost() { return $this->host; }
+}
+
+class BeanstalkJobV2 {
+
+	private $id, $body, $conn, $isreserved;
+
+	/**
+	 * Create a BeanstalkJob
+	 *
+	 * This should be left to the BeanstalkConnection and shouldn't be invoked elsewhere
+	 *
+	 * @param integer               $id         The Beanstalk ID of the job
+	 * @param string                $body       The body text of the job
+	 * @param BeanstalkConnectionV2 $conn       The BeanstalkConnection from which the job originated
+	 * @param boolean               $isreserved Whether the job is currently reserved
+	 * @return BeanstalkJobV2
+	 */
+	public function __construct($id, $body, $conn, $isreserved=true) {
+		$this->id = $id;
+		$this->body = $body;
+		$this->conn = $conn;
+		$this->isreserved = (bool)$isreserved;
+	}
+
+	public function getID() { return $this->id; }
+	public function getBody() { return $this->body; }
+	public function isReserved() { return $this->isreserved; }
+
+	/**
+	 * Removes the job from the queue
+	 *
+	 * @return boolean
+	 */
+	public function delete() {
+		return $this->conn->interact('delete '.$this->id, '/^DELETED$/');
+	}
+
+	/**
+	 * Puts a reserved job back into the ready queue.
+	 *
+	 * @param integer $pri   Priority to assign to the job.
+	 * @param integer $delay Number of seconds to wait before putting the job in the ready queue.
+	 * @return boolean
+	 */
+	public function release($pri=null, $delay=null) {
+		if ($pri === null) $pri = $this->conn->getDefaultPriority();
+		if ($delay === null) $delay = $this->conn->getDefaultDelay();
+		return $this->conn->interact('release '.$this->id.' '.$pri.' '.$delay, '/^(?:RELEASED|BURIED)$/');
+	}
+
+	/**
+	 * Puts a job into the `buried` state.  Buried jobs will not be touched until kicked.
+	 *
+	 * @param integer $pri New priority to assign to the job.
+	 * @return boolean
+	 */
+	public function bury($pri=null) {
+		if ($pri === null) $pri = $this->conn->getDefaultPriority();
+		return $this->conn->interact('bury '.$this->id.' '.$pri, '/^BURIED$/');
+	}
+
+	/**
+	 * Allows a worker to request more time to work on a job
+	 *
+	 * @return boolean
+	 */
+	public function touch() {
+		return $this->conn->interact('touch '.$this->id, '/^TOUCHED$/');
+	}
+
+	/**
+	 * Gives statistical information about the job
+	 *
+	 * @param string $key Optional key to return, else returns the whole set of stats
+	 * @return array|boolean `false` on error otherwise an associative array of data or a single string if a key was supplied
+	 */
+	public function stats($key=false) {
+		$data = $this->conn->interact('stats-job '.$this->id, 'yaml');
+		if ($key and $data) {
+			return ($key and isset($data[$key])) ? $data[$key] : false;
+		} else {
+			return $data;
+		}
+	}
+
+	public function getConn() {
+		return $this->conn;
+	}
+}
+
+require_once $_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/errorhandler';
+class BeanstalkConnectionException extends AssankaException {}
+class BeanstalkProtocolException extends AssankaException {}
+
+
+if (!class_exists('BeanstalkPool') and function_exists('class_alias')) class_alias('BeanstalkPoolV2', 'BeanstalkPool');
+if (!class_exists('BeanstalkConnection') and function_exists('class_alias')) class_alias('BeanstalkConnectionV2', 'BeanstalkConnection');
+if (!class_exists('BeanstalkJob') and function_exists('class_alias')) class_alias('BeanstalkJobV2', 'BeanstalkJob');

@@ -1,0 +1,93 @@
+<?php
+/*
+########################################################
+Stats page for Sites linking in
+
+07/11/2004
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+require_once("statslib");
+
+// Allow results to persist for an hour
+header("Expires: " . date("r", time()+3600));
+header("Last-Modified: " . date("r", time()-3600));
+header("Cache-Control: max-age=3600");
+
+if ($statsLevels[$authuserstats] < $statsLevels["premium"]) {
+	include("premiumguide/guide");
+	exit;
+}
+
+htm_waitmsg("connecting");
+
+$site = "www.hotbot.com";
+$page = "/adv.asp?query=linkdomain%3A".$_SERVER["SERVER_NAME"]."&ps=&loc=searchbox&tab=web&provKey=Inktomi&lang=&dfi=&dfe=".$_SERVER["SERVER_NAME"]."&region=&wfc=2&wfr=&wfw=&wfq=&wfr=&wfw=&wfq=&date=0&past=&dateop=after&month=1&day=&year=2004&pcu=&adf=";
+
+$fp = fsockopen($site, 80, $errno, $errstr, 10);
+
+if (!$fp) {
+   echo "$errstr ($errno)<br />\n";
+} else {
+
+	// Send search query
+	$out = "GET ".$page." HTTP/1.1\n";
+	$out .= "Host: ".$site."\n";
+	$out .= "Cookie: prov=Inktomi; HBPREFS=rscat=off&rssiz=off&rsdat=off&rsurl=off&rssrc=off&rsnum=50&rsdes=off&rswin=Same&prov=Inktomi";
+	$out .= "\n\n";
+	fwrite($fp, $out);
+
+	// Receive response
+	$buffer = "";
+	while (!feof($fp)) {
+		$buffer .= fgets($fp, 128);
+	}
+	fclose($fp);
+
+	// Process response - extract just the results
+	$pos = strpos($buffer, "<!-- RESULTS -->");
+	$buffer = substr($buffer, $pos);
+	$pos = strpos($buffer, "<!-- /RESULTS -->");
+	$buffer = substr($buffer, 0, $pos);
+
+	htm_header();
+	?>
+	<td class="centrepanel">
+	<table class="data" id="table1" cellspacing=0>
+		<thead><tr>
+		<td>Title</td>
+		<td>Originating Site</td>
+		</tr></thead>
+		<?php
+		
+		// Split the results
+		preg_match_all("/<p class=\"res\">[^\n]*href=\"([^\"]+)\"[^>]*>([^<]+)<\/a>/i", $buffer, $matches, PREG_SET_ORDER);
+		for($i=0; $i<sizeof($matches); $i++) {
+			$origin = parse_url($matches[$i][1]);
+			?>
+			<tr>
+			<td><a href="<?=$matches[$i][1]?>"><?=$matches[$i][2]?></a></td>
+			<td><?=$origin["host"]?></a></td>
+			</tr>
+			<?php
+		}
+		if (!sizeof($matches)) {
+			?><tr><td colspan=2 style="text-align: center"><em>There are no results to display</em></td></tr><?php
+		}
+		?>
+	</table>
+	</td>
+	<td class="rightpanel">
+	<h3>Information</h3>
+	The sites listed here have links that point to your site.
+	<p>
+	This list is different to the one on the <a href="referrals">Other Referrals</a> page.  In order to be on this list, the site needs to <em>currently</em> have a live link to a page on <?=$_SERVER["SERVER_NAME"]?>, although it does not necessarily have to have been followed by any users.  The list is constructed by performing a search of the internet, rather than this site's log files.
+	<p>
+	<b>Note:</b> The list on this page is <em>live</em>, so your date filters have no effect on it, however it is not necessarily completely up to date.  The search engines queried by this system will refresh their indexes periodically, and drop those sites which no longer link to your site.
+	</td>
+	<?php
+	htm_footer();
+}
+?>

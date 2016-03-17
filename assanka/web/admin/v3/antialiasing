@@ -1,0 +1,127 @@
+<?php
+/*
+#######################################
+/lib/inc/antialiasing
+
+Anti-aliasing routines
+
+Assanka Ltd
+########################################################
+*/
+
+// Font width function for TTF fonts
+function imageTTFFontWidth($size, $angle, $font, $text) {
+	if (!file_exists($font)) trigger_error("No font specified $font", E_USER_ERROR);
+	$bbox = imageTTFBbox($size, $angle, $font, $text);
+	return $bbox[2] - $bbox[0];
+}
+
+// New Simpler antialias function using imageSetSmoothPixel
+function imageSmoothLine($image, $x1, $y1, $x2, $y2, $color, $precision=1)
+{
+	$colors = imagecolorsforindex($image, $color);
+
+	if ($x2 == $x1) {
+		$tmp = $x1; $x1 = $y1; $y1 = $tmp;
+		$tmp = $x2; $x2 = $y2; $y2 = $tmp;
+		$swapx = true;
+	}
+
+	$m = ($y2 - $y1) / ($x2 - $x1);
+	$b = $y1 - $m * $x1;
+
+	$strx = min($x1, $x2);
+	$endx = max($x1, $x2);
+	for ($x = $strx; $x <= $endx; $x += $precision) {
+		$y = $m * $x + $b;
+		if (!$swapx) {
+			imageSetSmoothPixel($image, $x, $y, $color);
+		} else {
+			imageSetSmoothPixel($image, $y, $x, $color);
+		}
+	}
+}
+
+// Antialiased arc. Does an ok job, but needs some work.
+function imageSmoothArc($image, $cx, $cy, $w, $h, $s, $e, $color, $resolution = false) {
+	$A = $w/2;
+	$B = $h/2;
+
+	// Resolution is how many angular degrees there will be per point.
+	// The higher the resolution the the worse the curve. If the resolution is too low the subpixels of the antialias
+	// will begin to overlap.
+	// Really the resolution needs to change based on the size of the elipse, but I can't figure
+	// out a decent way of calculating this. The more correct the resolution the better the antialiasing will be.
+	// This is a formula I tried that approximated the resolution by getting several points of 
+	// best resolution for different sized curves.Then creating a trendline. It didn't work too well.
+	if (!$resolution) {
+		$resolution = 58.62 * pow (max ($w, $h), -0.87);
+	}
+
+	//Find Coterminal angles.
+	while ($s > $e) {
+		$e += 360;
+	}
+
+	for ($i = $s; $i <= $e; $i += $resolution) {
+		$theta = 90 - $i; //The real ImageArc function seems to be shifted.
+		$x = $cx + $A * sin(deg2rad($theta));
+		$y = $cy + $B * cos(deg2rad($theta));
+		
+		//There are two ways to do this, set each pixel individualy or draw a line between two pixels.
+		//if you set each pixel the resolution cannot be too high your you'll have dots.
+		//	ImageSetSmoothpixel ($image, $x, $y, $color);
+		
+		if (is_array($lastpixel)) {
+			imageSmoothLine($image, $x, $y, $lastpixel[0], $lastpixel[1], $color);
+		} else {
+			$firstpixel = array($x, $y);
+		}
+
+		$lastpixel = array($x, $y);
+	}
+	imageSmoothLine($image, $firstpixel[0], $firstpixel[1], $lastpixel[0], $lastpixel[1], $color);
+}
+
+// Draw an antialiased pixel. This function basically allows x and y to be set as floats. Any non even number will be
+// split between two pixels.
+function imageSetSmoothPixel($image, $x, $y, $color) {
+	$fullcolor = imagecolorsforindex($image , $color);
+	$y == floor($y) ? $ya = 1 : $ya = $y - floor($y);
+	$yb = ceil($y) - $y;
+	$x == floor($x) ? $xa = 1 : $xa = $x - floor($x);
+	$xb = ceil($x) - $x;
+	
+	//Will set four subpixels for each pixel.
+	imageSetSubPixel ($image, floor($x), floor($y), $xa, $ya, $xb, $yb, $fullcolor);
+
+	if (ceil($y) != floor($y)) {
+		imageSetSubPixel ($image, floor($x), ceil($y), $xa, $yb, $xb, $ya, $fullcolor);
+	}
+
+	if (ceil($x) != floor($x)) {
+		imageSetSubPixel ($image, ceil($x), floor($y), $xb, $ya, $xa, $yb, $fullcolor);
+
+		if (ceil($y) != floor($y)) {
+			imageSetSubPixel ($image, ceil($x), ceil($y), $xb, $yb, $xa, $ya, $fullcolor);
+		}
+	}
+}
+
+// Used by ImageSetSmoothPixel to set one of the sub pixels of the antialias
+function ImageSetSubPixel ($image, $x, $y, $a, $b, $c, $d, $fullcolor) {
+	$tempcolors = imagecolorsforindex($image, imagecolorat($image, $x, $y));
+	$tempcolors['red'] = round ($tempcolors['red'] * (($a + $b)/2) + $fullcolor['red'] * (($c + $d)/2));
+	$tempcolors['blue'] = round ($tempcolors['blue'] * (($a + $b)/2) + $fullcolor['blue'] * (($c + $d)/2));
+	$tempcolors['green'] = round ($tempcolors['green'] * (($a + $b)/2) + $fullcolor['green'] * (($c + $d)/2));
+	if ($tempcolors['red'] > 255) $tempcolors['red'] = 255;
+	if ($tempcolors['blue'] > 255) $tempcolors['blue'] = 255;
+	if ($tempcolors['green'] > 255) $tempcolors['green'] = 255;
+	if (imagecolorexact ($image, $tempcolors['red'], $tempcolors['green'], $tempcolors['blue']) == -1) {
+		imagecolorallocate ($image, $tempcolors['red'], $tempcolors['green'], $tempcolors['blue']);
+	}
+	$newcolor = imagecolorexact ($image, $tempcolors['red'], $tempcolors['green'], $tempcolors['blue']);
+	imagesetpixel($image, $x, $y, $newcolor);
+}
+
+?>

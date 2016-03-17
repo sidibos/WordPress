@@ -1,0 +1,38 @@
+<?php
+/**
+ * User management area of admin console; controls the deletion of
+ * current users.
+ *
+ * Upgraded to admin v3 on 7th April 2006 by RB.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once("userslib");
+
+// Check variables supplied
+if (!$_REQUEST["user"]) trigger_error("Expected input variable 'user' not supplied", E_USER_ERROR);
+
+// Load user info from cfg_adminusers table
+$result = $db->query("SELECT name, supportuserid FROM cfg_adminusers WHERE htaccessuser='".$db->sqlenc($_REQUEST["user"])."'");
+$user = $db->fetchrow($result);
+
+// Check user is not a support contact
+if ($user && $user["supportuserid"]) {
+	$page->alert("You cannot delete a support contact.  If you would like to change your support contacts, please get in touch with your account manager or call 0870 085 2038.", "error");
+	header("Location: edit?user=".$_REQUEST["user"]);
+	exit;
+} else {
+
+	// Delete the user from the cfg_adminusers table
+	if ($user) $db->query("DELETE FROM cfg_adminusers WHERE htaccessuser='".$db->sqlenc($_REQUEST["user"])."'");
+
+	// Remove their htpasswd record
+	htpasswdRemoveUser($_REQUEST["user"]);
+
+	$page->alert("User '".$user["name"]."' was deleted successfully.", "done");
+	header("Location: index");
+	exit;
+}
+
+?>

@@ -1,0 +1,41 @@
+<?php
+// Include files
+require_once("appglobal");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+$user = $sdb->queryRow("SELECT * FROM users WHERE id=".$_SESSION["support"]["userid"]);
+$warnings = false;
+
+if (!isset($_POST["sendemail"]) or !$_POST["sendemail"]) {
+	$user["email"] = "";
+} elseif (Validator::isEmail($_POST["email"]) and in_array($_POST["emailnotifylevel"], Model::$opts["importances"])) {
+	$user["email"] = $_POST["email"];
+	$user["emailnotifylevel"] = $_POST["emailnotifylevel"];
+} else {
+	$warnings = true;
+	$page->alert("Your email alert settings could not be updated.  Please check that you have typed a valid email address", "warning");
+}
+
+if (!$_POST["sendsms"]) {
+	$user["mobile"] = "";
+} elseif (Validator::isUKPhone($_POST["mobile"]) and in_array($_POST["smsnotifylevel"], Model::$opts["importances"])) {
+	$user["mobile"] = $_POST["mobile"];
+	$user["smsnotifylevel"] = $_POST["smsnotifylevel"];
+} else {
+	$warnings = true;
+	$page->alert("Your SMS alert settings could not be updated.  Please check that you have typed a valid UK mobile phone number", "warning");
+}
+
+$sdb->query("UPDATE users SET {email}, {mobile}, {emailnotifylevel}, {smsnotifylevel} WHERE {id}", $user);
+if (!$warnings) $page->alert("Alert settings have been updated successfully", "done");
+$page->redirect("info/");
+
+?>

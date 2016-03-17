@@ -1,0 +1,56 @@
+<?php
+/**
+ * Echoes a CMS page inside a basic page for formatted HTML.
+ *
+ * Accepted Inputs: (GET) id: id of the page to echo.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once("../lib/inc/global");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+require_once("../lib/inc/formatteddifference");
+$auth->checkRights("outline.user");
+
+// Error if this project does not have version control enabled
+if (!outlineIsFunctionalityEnabled("versiondiff")) trigger_error(APPNAME." does not have the correct permissions to use version control.", E_USER_ERROR);
+
+if (empty($_GET["id"]) or !is_numeric($_GET["id"])) trigger_error("Expected variable id not supplied or non numeric", E_USER_ERROR);
+
+$formatsrow = $db->queryRow("SELECT dateformat, timeformat FROM out_languages WHERE isocode='".$_SESSION["outline"]["language"]."'");
+$dateFormat = $formatsrow["dateformat"];
+$timeFormat = $formatsrow["timeformat"];
+
+// Grab the version we wish to echo
+$row = $db->queryRow("SELECT v.html, v.title, i.type, i.siteid FROM out_versions v LEFT JOIN out_localcontent l ON v.localcontentid=l.id LEFT JOIN out_items i ON l.itemid=i.id WHERE v.id=".$_GET["id"]);
+if (!$row) trigger_error("Could not retrieve requested version", E_USER_ERROR);
+
+$cssFile = false;
+if (file_exists($_SERVER["DOCUMENT_ROOT"]."/lib/css/cms")) $cssFile = "/lib/css/cms";
+elseif (file_exists($_SERVER["DOCUMENT_ROOT"]."/lib/css/cms.css")) $cssFile = "/lib/css/cms.css";
+elseif (file_exists($_SERVER["DOCUMENT_ROOT"]."/lib/css/screen")) $cssFile = "/lib/css/screen";
+elseif (file_exists($_SERVER["DOCUMENT_ROOT"]."/lib/css/screen.css")) $cssFile = "/lib/css/screen.css";
+
+$htmlToEcho = "<html><head>";
+if ($cssFile) $htmlToEcho .= "<link rel=\"stylesheet\" href=\"".$cssFile."\" type=\"text/css\" media=\"screen\" />";
+$htmlToEcho .= "<title>".$row["title"]."</title></head><body style=\"padding: 10px; text-align: left;\">";
+
+if ($row["type"] == "asset") {
+	$htmlToEcho .= $row["html"]; 
+} else {
+	$templateroot = $db->querySingle("SELECT templateroot FROM out_sites WHERE id=".$row["siteid"]);
+	$page = new TemplateManager($_SERVER["DOCUMENT_ROOT"].$templateroot);
+	$page->set("content", $row["html"]);
+	$htmlToEcho .= $page->render("page-cms");
+}
+$htmlToEcho .= "</body></html>";
+
+echo $htmlToEcho;
+?>

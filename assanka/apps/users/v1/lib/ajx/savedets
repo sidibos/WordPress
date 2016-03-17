@@ -1,0 +1,45 @@
+<?php
+
+require_once("../../appglobal");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+$user = $auth->getDetailsForUser($_POST["username"]);
+if ($user===false) exit("Error (user not found)");
+
+$parts = explode(".", $_POST["field"]);
+$ref = array();
+$ref[0] =& $user;
+$i=0;
+foreach ($parts as $part) {
+
+	// Don't save support key if the user isn't assanka
+	// or, in other words, allow anyone to save anything that isn't supportkey
+	// and allow assanka to save anything
+	if ($part=="supportkey" and $auth->user["username"]!="assanka") exit("Not allowed");
+
+	if ($part=='_new') {
+		if (isset($ref[$i]) and !is_array($ref[$i])) $ref[$i] = array($ref[$i]);
+		$ref[$i+1] =& $ref[$i][];
+	} else {
+		$ref[$i+1] =& $ref[$i][$part];
+	}
+	$i++;
+}
+if (!empty($_POST["val"])) {
+	$ref[$i] = (is_numeric($_POST["val"])) ? (integer)$_POST["val"] : (string)$_POST["val"];
+	echo $_POST["val"];
+} else {
+	$ref[$i] = null;
+	unset($ref[$i]);
+	echo "Unset";
+}
+$auth->setDetails($user, $_POST["username"]);
+
+?>

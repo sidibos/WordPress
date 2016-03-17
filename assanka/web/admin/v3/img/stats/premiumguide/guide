@@ -1,0 +1,57 @@
+<?php
+/*
+########################################################
+Intro to premium stats
+
+07/11/2004
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+htm_header();
+?>
+<td class="centrepanel">
+<table cellspacing=0 cellpadding=0 width=100%>
+	<tr><td style="background: #E2E5EA; width: 100% height:203px; border-bottom: 1px solid black;"><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/header.jpg" width="549" height="203" /></td></tr>
+</table>
+<div style="padding: 10px; font-weight: bold; background-color: rgb(176,0,3); color: white">To use this analysis tool, you will need to upgrade your statistics subscription.</div>
+<table cellspacing=0 cellpadding=10 style="margin: 5px">
+	<tr><td width="50%" style="border-right: 1px dotted #aaa">
+	<p><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/title_accurate.png"></p>
+	<img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/ss1.png" align="right" style="margin-left: 8px">
+	<p>Assanka Premium Statistics combines a daily analysis of your website logfiles with real-time connections to internet search indexes to provide a powerful tool for understanding and reacting to the traffic patterns on your website.  Every page includes both the processed and sorted data as well as graphs and charts to enable you to see the big picture whilst having the precise numbers at your fingertips.</p>
+	<img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/ss2.png" align="left" style="margin-right: 8px">
+	<p>You can also customise your statistics to suit your reporting query and generate graphs that cover precisely the period you need.  Just select from the options available on the right of each page to set your preferences.  And if you want a table sorted by a different column - just click on it and it's instantly reordered.</p>
+	<p>With features like these you'll soon appreciate how precisely in tune you can be with the needs of your audience.</p>
+
+	<p><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/title_easytounderstand.png"></p>
+	<img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/ss4.png" align="right" style="margin-left: 8px">
+	<p>Despite the power of Assanka Premium Statistics, the system remains very easy to understand and use.  Simple, clear layout and colours combine with uncluttered graphs to show just the information you actually want to see.  Context-sensitive help is always available to explain the meaning of every statistic.  Equally effective whether you're a web novice, an enthusiast or a web professional, the help text is a ready reference that doesn't slow you down.</p>
+	</td><td width="50%">
+	<p><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/title_comprehensive.png"></p>
+	<img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/ss3.png" align="right" style="margin-left: 8px">
+	<p>Included in the premium statistics package are the following services:</p>
+	<ul>
+	<li>Length of visit - find out how long your visitors spend on the site.</li>
+	<li>Popular pages - individual pages ranked by the number of hits they receive.</li>
+	<li>File types - which file types are most downloaded?</li>
+	<li>Operating systems and browsers - the vital question of platform compatibility.  What are your visitors using to browse the site?</li>
+	<li>Search referrals - see which search engines deliver the majority of your traffic, ranked by number of hits.</li>
+	<li>Other referrals - links into your site from other sites.  Find out where visitors are coming from.</li>
+	<li>Search keywords - all the search keywords and phrases visitors have used to find your site.  Use these to optimise your content and drive up your search engine rankings.</li>
+	<li>Sites linking in - a list of sites that currently link to you, even if they have not yet referred any visitors.  No need to check up on your reciprocal linking agreements: this list is updated daily.</li>
+	<li>Traffic Flow Map - an amazing insight into the way people use your navigation system, this graphical map shows the <em>routes</em> that visitors take as they move from page to page.</li>
+	</ul>
+
+	<p><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v2/stats/premiumguide/title_subscribing.png"></p>
+	<p>To upgrade your statistics subscription for <?=$_SERVER["SERVER_NAME"]?>, contact your system administrator, or your Assanka account manager on 0870 085 2038.</p>
+	</td></tr>
+</table>
+</td>
+<td class="rightpanel">
+&nbsp;
+</td>
+<?php
+htm_footer(); 
+?>

@@ -1,0 +1,130 @@
+<?php
+/**
+ * An oAuth client for oAuth 1.0a
+ *
+ * Falls back to oAuth 1.0 if the server doesn't support 1.0a.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+
+require_once $_SERVER['CORE_PATH'].'/helpers/oauth/v1/oauthclient';
+require_once $_SERVER['CORE_PATH'].'/helpers/memcache/v1/memcacheaccess';
+
+class OAuthClient1_0a extends OAuthClientV1 {
+
+	private $_urlreqtok, $_urlaccesstok, $_urlauthorise, $_consumerkey, $_consumersecret, $_sigmethod, $_scope, $_reqtoken, $_reqtoksecret, $_accesstok, $_toksecret;
+
+	public function __construct($urlprefix, $urlreqtok, $urlaccesstok, $urlauthorise, $consumerkey, $consumersecret, $scope=null) {
+		$this->_urlreqtok = $urlprefix.$urlreqtok;
+		$this->_urlaccesstok = $urlprefix.$urlaccesstok;
+		$this->_urlauthorise = $urlprefix.$urlauthorise;
+		$this->_consumerkey = $consumerkey;
+		$this->_consumersecret = $consumersecret;
+		$this->_scope = $scope;
+		$this->_sigmethod = 'PLAINTEXT';
+		$_scheme = (isset($_SERVER['HTTPS']) and $_SERVER['HTTPS'] == 'on') ? 'https://' : 'http://';
+		$this->_thisurl = $_scheme . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		$this->_thisurl = preg_replace("/([\?\&])oauth_(token|verifier)=[^\&]*/i", '\\1', $this->_thisurl);
+
+		return true;
+	}
+
+	public function authorise() {
+		$mc = MemcacheAccess::getMemcache('oauthclient1.0a'.$this->_urlreqtok);
+
+		if (isset($_GET['denied'])) {
+			throw new AuthException('Permission denied', 0, null, get_defined_vars());
+		} elseif (isset($_GET['oauth_problem'])) {
+			throw new AuthException($_GET['oauth_problem'], 0, null, get_defined_vars());
+		} elseif (isset($_GET['oauth_token'])) {
+			$this->_reqtoken = $_GET['oauth_token'];
+			$this->_reqtoksecret = $mc->get($this->_reqtoken);
+			$params = array();
+
+			// Only include oauth_verifier if sent by server (oAuth 1.0a only)
+			if (isset($_GET['oauth_verifier'])) $params['oauth_verifier'] = $_GET['oauth_verifier'];
+			$resp = $this->makereq('GET', $this->_urlaccesstok, $params);
+			if (is_object($resp) and $resp->getResponseStatusCode() == 200) {
+				$data = $resp->getData('urlenc');
+			}
+			if (empty($data['oauth_token'])) throw new AuthException("Could not get access token", 0, null, get_defined_vars());
+
+			$this->setCredentials($data['oauth_token'], $data['oauth_token_secret']);
+			return array('access_token'=>$data['oauth_token'], 'token_secret'=>$data['oauth_token_secret']);
+		} else {
+
+			$resp = $this->makereq('GET', $this->_urlreqtok, array('scope' => $this->_scope));
+			$data = is_object($resp) ? $resp->getData('urlenc') : null;
+			if (empty($data['oauth_token'])) {
+				throw new AuthException("Could not get request token", 0, null, get_defined_vars());
+			}
+
+			// Store the token secret in memcache so it can be retreived later
+			$mc->set($data['oauth_token'], $data['oauth_token_secret']);
+
+			$redirecturl = $this->_urlauthorise.'?oauth_token='.rawurlencode($data['oauth_token']);
+
+			// Parameter oauth_callback_confirmed was added in oauth 1.0a - its absence implies server is still using oauth 1.0 (so include oauth_callback)
+			if (empty($data['oauth_callback_confirmed'])) $redirecturl .= '&oauth_callback='.rawurlencode($this->_thisurl);
+
+			header('Location: '.$redirecturl);
+			exit;
+		}
+	}
+	public function setCredentials($access_token, $token_secret) {
+		 $this->_accesstok = $access_token;
+		 $this->_toksecret = $token_secret;
+	}
+
+	public function setSigMethod($method) {
+		if (!in_array($method, array('HMAC-SHA1', 'PLAINTEXT'))) throw new AssankaException('Signature method not supported', 0, null, get_defined_vars());
+		$this->_sigmethod = $method;
+		return true;
+	}
+
+	private function _sign($method, $url, $oauth, $reqparams) {
+		$toksecret = (!empty($this->_toksecret))?$this->_toksecret:((!empty($this->_reqtoksecret))?$this->_reqtoksecret:'');
+		$signingkey = $this->_consumersecret.'&'.$toksecret;
+		if ($this->_sigmethod == 'PLAINTEXT') {
+			return $signingkey;
+		} elseif ($this->_sigmethod == 'HMAC-SHA1') {
+			$params = array_merge($oauth, $reqparams);
+			$basestring = $method . '&' . rawurlencode($url) . '&';
+			ksort($params);
+			foreach ($params as $key => &$param) $param = rawurlencode(rawurlencode($key) . "=" . rawurlencode($param));
+			$basestring .= join('%26', $params);
+			return base64_encode(hash_hmac('sha1', $basestring, $signingkey, true));
+		} else {
+			throw new AssankaException('Unsupported signature method', 0, null, get_defined_vars());
+		}
+	}
+
+	private function _getRandomString($length) {
+		$s = '';
+		for ($i = 0; $i < $length; $i++) {
+			$s .= base_convert(mt_rand(0, 35), 10, 36);
+		}
+		return $s;
+	}
+
+	protected function _getAuthorizationHeader($method, $url, $reqparams=array()) {
+		$auth = array();
+		$auth['oauth_consumer_key'] = $this->_consumerkey;
+		if (isset($this->_accesstok)) $auth['oauth_token'] = $this->_accesstok;
+		elseif (isset($this->_reqtoken)) $auth['oauth_token'] = $this->_reqtoken;
+		$auth['oauth_callback'] = $this->_thisurl;
+		$auth['oauth_signature_method'] = $this->_sigmethod;
+		$auth['oauth_timestamp'] = time();
+		$auth['oauth_nonce'] = $this->_getRandomString(10);
+		$auth['oauth_version'] = '1.0';
+		$auth['oauth_signature'] = $this->_sign($method, $url, $auth, $reqparams);
+		$authheader = 'OAuth';
+		foreach ($auth as $key => $value) {
+			$authheader .= ' '.$key.'="'.rawurlencode($value).'",';
+		}
+		$authheader = rtrim($authheader, ",");
+		return $authheader;
+	}
+}

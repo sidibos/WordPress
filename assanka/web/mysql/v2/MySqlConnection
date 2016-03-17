@@ -1,0 +1,653 @@
+<?php
+/*
+########################################################
+Contains connection information for mysql database.
+Establishes connection to database for application.
+
+04/01/2006
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+
+
+/**
+ * TODO:RB:20120912: This file is still in use by at least the rankings-admin-trunk and the
+ * rankings-pubic-trunk projects.  Before deprecation, those projects need to be updated, or
+ * we need to support some form of per-project core for older projects before we upgrade them.
+ * AB: Also assk2006005.
+ */
+
+
+
+
+if (!isset($_SERVER["MYSQLDATE"])) $_SERVER["MYSQLDATE"] = "%d %M %Y";
+if (!isset($_SERVER["MYSQLTIME"])) $_SERVER["MYSQLTIME"] = "%H:%i";
+
+class MySqlConnectionV2 {
+
+	var $server;
+	var $username;
+	var $password;
+	var $dbname;
+	var $querycount = 0;
+	var $connectionOpened = false;
+	var $conn;
+	var $rowsperpage;
+	var $reconnectonfail = false;
+	var $lastresult = false;
+	var $lastquerytime = 0;
+
+	function MySqlConnectionV2 ($server, $username, $password, $dbname) {
+		$this->server = $server;
+		$this->username = $username;
+		$this->password = $password;
+		$this->dbname = $dbname;
+		$this->rowsperpage = 50;
+	}
+
+	function setreconnectonfail($newval=true) {
+		$this->reconnectonfail = ($newval) ? true : false;
+	}
+
+	// Perform a query
+	function query($query, $suppresserrors=false) {
+
+		// Check for an open connection, and establish if necessary
+		if (!$this->connectionOpened) {
+ 			$this->conn = @mysql_connect($this->server, $this->username, $this->password, true, 128);
+			if (!$this->conn) {
+
+				// Try exactly once more to reconnect, so as to mitigate temporary problems discussed in #15410
+				sleep(1);
+ 				$this->conn = @mysql_connect($this->server, $this->username, $this->password, true, 128);
+				if (!$this->conn) trigger_error("Database server could not be contacted eh:noreport eh:hashcode=587CD2E0", E_USER_ERROR);
+			}
+			mysql_select_db($this->dbname, $this->conn) or trigger_error ("Database ".$this->dbname." was not found in ".$_SERVER['SCRIPT_NAME'], E_USER_ERROR);
+			mysql_query("SET AUTOCOMMIT = 1", $this->conn);
+			$this->connectionOpened = true;
+		}
+		
+		$this->querycount++;
+		list($usec, $sec) = explode(" ", microtime());
+		$start = ((float)$usec + (float)$sec);
+		$local_result = mysql_query($query, $this->conn);
+		list($usec, $sec) = explode(" ", microtime());
+		$end = ((float)$usec + (float)$sec);
+		$this->lastquerytime = ($end-$start)*1000;
+		$errortxt = mysql_error($this->conn);
+		if (!$local_result and $this->reconnectonfail and $errortxt == "Lost connection to MySQL server during query") {
+			sleep(60);
+			$this->conn = mysql_connect($this->server, $this->username, $this->password, true, 128) or trigger_error ("Database server could not be contacted eh:noreport eh:hashcode=587CD2E0", E_USER_ERROR);
+			mysql_select_db($this->dbname, $this->conn) or trigger_error ("Database was not found eh:hashcode=74154CDD", E_USER_ERROR);
+			return $this->query($query);
+		} elseif (!$local_result and !$suppresserrors) {
+			mysql_query("ROLLBACK", $this->conn);
+			trigger_error($errortxt." occured in query: ".$query."\n", E_USER_ERROR);
+			$this->lastresult = $local_result;
+			return false;
+		} else {
+			$_SESSION["dbg"]["lastquery"] = $query;
+			$this->lastresult = $local_result;
+			return $local_result;
+		}
+	}
+
+	// Perform a paginated query
+	function pquery($qrySelect, $qryFrom, $qryWhere=false, $qryHaving=false, $qryGroupby=false, $qryOrderby=false, $pageno=false) {
+
+		// Count the total size of the resultset
+		if (is_numeric($qryFrom)) {
+			$res = $this->query($qrySelect);
+			$total = $this->numresults($res);
+			$pageno = $qryFrom;
+		} elseif ($qryGroupby or $qryHaving) {
+			$res = $this->query("$qrySelect $qryFrom $qryWhere $qryGroupby $qryHaving");
+			$total = $this->numresults($res);
+		} else {
+			$res = $this->query("SELECT COUNT(*) $qryFrom $qryWhere");
+			$total = $this->singleresult($res);
+		}
+
+		// If results were returned
+		if ($total) {
+
+			// Define LIMIT
+			$pages = ceil($total/$this->rowsperpage);
+			if ($pageno > $pages) $pageno = $pages;
+			if ($pageno < 1) $pageno = 1;
+			$qryLimit = "LIMIT ".(($pageno-1)*$this->rowsperpage).", ".$this->rowsperpage;
+
+			// Run full query and retrieve paginated results
+			if (is_numeric($qryFrom)) {
+				$res = $this->query($qrySelect." ".$qryLimit);
+			} else {
+				$res = $this->query($qrySelect." ".$qryFrom." ".$qryWhere." ".$qryGroupby." ".$qryHaving." ".$qryOrderby." ".$qryLimit);
+			}
+			return array($res, $total, $pages);
+		} else {
+			return array(false, 0, 0);
+		}
+	}
+
+	function setRowsperpage($rpp) {
+		if (is_numeric($rpp)) {
+			$this->rowsperpage = $rpp;
+		} else {
+			trigger_error("Cannot set rows per page to a non-numeric value, using default", E_USER_NOTICE);
+			$this->rowsperpage = 50;
+		}
+	}
+
+	function outputPagination($numresults, $numpages, $pageno, $objname="record") {
+		?>
+		<h3>Results summary</h3>
+		<div class="paddedcontent"><b><?=($numresults)?number_format($numresults):"No"?></b> <?=($numresults!=1)?((substr($objname, strlen($objname)-1, 1)=="y")?substr($objname, 0, strlen($objname)-1)."ies":$objname.((substr($objname, strlen($objname)-1, 1)=="s")?"":"s")):$objname?> match<?=($numresults == 1)?"es":""?> your criteria.
+		<?php
+		if ($numresults) echo "Showing page ".number_format($pageno)." of ".number_format($numpages).".";
+		echo "</div>";
+
+		// Prepare pagination bar if necessary	
+		if($numpages > 1) {
+			?><div class="paginationbar"><span><?php
+			if ($pageno==1) {
+				?><span class="disabled"><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/pagprev_disabled.png" width="9" height="13" /></span><?php
+			} else {
+				?><a href="<? 
+				$exp = explode("/", $_SERVER["PHP_SELF"]);
+				echo(end($exp))?>?p=<?=$pageno-1?>" title="Previous page"><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/pagprev.png" width="9" height="13" /></a><?php
+			}
+			$low = ($pageno < 5) ? 1 : ($pageno-4);
+			$high = (($low+8) < $numpages) ? ($low+8) : $numpages;
+			for ($i=$low; $i<=$high; $i++) {
+				if ($i==$pageno) {
+					?><span class="currentpage"><?=$i?></span><?php
+				} else {
+					$parts = explode("/", $_SERVER["PHP_SELF"]);
+					?><a href="<?=end($parts)?>?p=<?=$i?>"><?=$i?></a><?php
+				}
+			}
+			if ($pageno==$numpages) {
+				?><span class="disabled"><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/pagnext_disabled.png" width="9" height="13" /></span><?php
+			} else {
+				$parts = explode("/", $_SERVER["PHP_SELF"]);
+				?><a href="<?=end($parts)?>?p=<?=$pageno+1?>" title="Next page"><img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/pagnext.png" width="9" height="13" /></a><?php
+			}
+			?></span><div class="clearall"></div></div><?php
+		}
+		$ret = ob_get_contents();
+		ob_clean();
+		return $ret;
+	}
+
+	// Perform a crosstab query and correlate the results into an array
+	function crosstab($query) {
+
+		// Check for an open connection, and establish if necessary
+		if (!$this->connectionOpened) {
+			$this->conn = mysql_connect($this->server, $this->username, $this->password) or trigger_error ("Database server could not be contacted", E_USER_ERROR);
+			mysql_select_db($this->dbname, $this->conn) or trigger_error ("Database was not found", E_USER_ERROR);
+			$this->connectionOpened = true;
+		}
+
+		$this->querycount++;
+		if (!$local_result = mysql_query($query, $this->conn)) {
+				trigger_error(mysql_error($this->conn)." occured in query: ".$query."\n", E_USER_ERROR);
+				return false;
+		} else {
+				$_SESSION["dbg"]["lastquery"] = $query;
+		}
+
+		$data = array();
+		while ($row = $this->fetchrow($local_result)) {
+				$data[$row["y"]][$row["x"]]=$row["data"];
+		}
+		return $data;
+	}
+
+	// Fetch a row from an SQL resultset as an associative array.
+	function fetchrow($result) {
+		if (!$data = mysql_fetch_assoc($result)) {
+			return false;
+		} else {
+			return $data;
+		}
+	}
+
+	// Add a v4 compatibility shim
+	function getRow($result = false) {
+		if (!$result) $result = $this->lastresult;
+		return $this->fetchrow($result);
+	}
+
+	// Perform a query and return an associative array of the first row
+	// returned.
+	function queryRow($query, $suppresserrors=false) {
+		$result = $this->query($query, $suppresserrors);
+		if (!$result) return false;
+		return $this->fetchrow($result);
+	}
+	
+	// Perform a query and return a single cell from the first row returned
+	function querySingle($query, $columnoffset=0, $suppresserrors=false) {
+		$result = $this->query($query, $suppresserrors);
+		if (!$result) return false;
+		return $this->singleresult($result, $columnoffset);
+	}
+	
+	// Fetch a cell where the query has returned only one row
+	function singleresult($result, $columnoffset=0) {
+		if (!$this->numresults($result)) return false;
+		return mysql_result($result, 0, $columnoffset);
+	}
+
+	// Return the number of rows matched by a query
+	function numresults($result) {
+		return mysql_num_rows($result);
+	}
+
+	// Return the number of rows affected by a query
+	function affectedrows() {
+		return mysql_affected_rows($this->conn);
+	}
+
+	// Return the last insert ID
+	function insertid() {
+		return mysql_insert_id($this->conn);
+	}
+
+	// Return the last error given by MySQL
+	function lasterror() {
+		return mysql_error($this->conn);
+	}
+
+	// Wrapper to escape string text for insertion into the database.
+	function sqlenc($mixed) {
+		if (is_array($mixed)) {
+			foreach($mixed as $key=>$value) {
+				$mixed[$key] = $this->sqlenc($value);
+			}
+			return $mixed;
+		} else {
+			if ($this->connectionOpened) {
+				return mysql_real_escape_string($mixed, $this->conn);
+			} else {
+				return mysql_escape_string($mixed);
+			}
+		}
+	}
+
+	// Returns number of queries performed this session
+	function getQueryCount() {
+		return $this->querycount;
+	}
+
+	// Return data as CSV:
+	function getcsv($result, $lineend="\n", $delim=",", $escape="\\", $enclose="\"") {
+		if ($row = $this->fetchrow($result)) {
+			$op = "";
+			$data = array();
+			$data[] = array_keys($row);
+			do {
+				$data[] = $row;
+			} while ($row = $this->fetchrow($result));
+			foreach($data as $row) {
+				foreach($row as $colkey=>$col) $row[$colkey] = $enclose.addslashes($col).$enclose;
+				$op .= join($delim, $row).$lineend;
+			}
+			return $op;
+		} else {
+			return false;
+		}
+	}
+}
+if (!class_exists('MySqlConnection')) {
+        class MySqlConnection extends MySqlConnectionV2 {
+        }
+}
+
+class DatatableForMySQLV2 {
+	
+	var $tablename;
+	var $columns;
+	var $filters;
+	var $data;
+	var $footer;
+	var $sortby;
+	var $sortdir;
+	var $rowsperpage;
+	var $objname;
+	var $sortable;
+	var $title;
+	var $haschildrows = false;
+	var $CHILD = 1;
+	var $PARENT = 2;
+	var $LEFTALIGN = false;
+	var $RIGHTALIGN = true;
+	var $AUTOWIDTH = false;
+	var $NOHREF = false;
+	var $NOFILTER = false;
+
+	function DatatableForMySQLV2($name, $objname="record", $rpp=50, $title=false, $sortable=true) {
+		$this->tablename = $name;
+		$this->title = $title;
+		$this->rowsperpage = (is_numeric($rpp))?$rpp:50;
+		$this->objname = $objname;
+		$this->columns = array();
+		$this->filters = array();
+		$this->data = array();
+		$this->footer = array();
+		$this->sortable = $sortable;
+	}
+
+	function addColumn($name, $label, $defaultsortorder="ASC", $ralign=false, $width=false, $hrefprefix=false, $highlightfilter=false) {
+		if (array_key_exists($name, $this->columns)) {
+			trigger_error("Column '".$name."' already exists, ignoring this column.", E_USER_NOTICE);
+			return false;
+		} else {
+			$this->columns[$name] = array();
+			$this->columns[$name]["label"] = $label;
+			$this->columns[$name]["defaultsortorder"] = ($defaultsortorder=="DESC")?"DESC":"ASC";
+			$this->columns[$name]["ralign"] = ($ralign)?true:false;
+			$this->columns[$name]["width"] = (is_numeric($width))?$width:false;
+			$this->columns[$name]["hrefprefix"] = ($hrefprefix)?$hrefprefix:false;
+			$this->columns[$name]["highlightfilter"] = ($highlightfilter)?$highlightfilter:false;
+			return true;
+		}
+	}
+
+	function getNumcolumns() {
+		return (sizeof($this->columns)+1);
+	}
+
+	function addFilter($name, $label, $type, $accesskey=false, $optionlist=false, $defaultvalue=false, $allowblank=true) {
+		if (array_key_exists($name, $this->filters)) {
+			trigger_error("Filter '".$name."' already exists, ignoring this filter.", E_USER_NOTICE);
+			return false;
+		} else {
+			$this->filters[$name] = array();
+			$this->filters[$name]["label"] = $label;
+			$this->filters[$name]["type"] = (in_array($type, array("exacttext", "partialtext", "lowdate", "highdate", "check", "radio", "select")))?$type:"partialtext";
+			$this->filters[$name]["accesskey"] = ($accesskey)?$accesskey:false;
+			$this->filters[$name]["options"] = (in_array($type, array("check", "radio", "select")) and is_array($optionlist))?$optionlist:false;
+			$this->filters[$name]["allowblank"] = $allowblank;
+			if (isset($_REQUEST["fil_set"]) and !empty($_REQUEST["fil_".$name])) {
+
+				// TODO:AB:20060104: Validation based on filter type
+				$this->filters[$name]["value"] = $_REQUEST["fil_".$name];
+				$_SESSION["tablefilters"][$this->tablename][$name] = $_REQUEST["fil_".$name];
+			} elseif (isset($_REQUEST["fil_set"])) {
+				$this->filters[$name]["value"] = false;
+				$_SESSION["tablefilters"][$this->tablename][$name] = false;
+			} elseif (isset($_SESSION["tablefilters"][$this->tablename][$name])) {
+				$this->filters[$name]["value"] = $_SESSION["tablefilters"][$this->tablename][$name];
+			} elseif ($defaultvalue) {
+				$this->filters[$name]["value"] = $defaultvalue;
+				$_SESSION["tablefilters"][$this->tablename][$name] = $defaultvalue;
+			} elseif (!$allowblank and is_array($this->filters[$name]["options"]) and sizeof($this->filters[$name]["options"])) {
+				$this->filters[$name]["value"] = key($this->filters[$name]["options"]);
+			} else {
+				$this->filters[$name]["value"] = false;
+			}
+			return true;
+		}
+	}
+
+	function setSort($defaultcol) {
+		if (!empty($_GET["s"])) {
+			$colname = $_GET["s"];
+			if ($colname == $_SESSION["tablesorts"][$this->tablename]["column"]) {
+				if ($_SESSION["tablesorts"][$this->tablename]["dir"] == "ASC") {
+					$this->sortdir = "DESC";
+				} else {
+					$this->sortdir = "ASC";
+				}
+				$this->sortby = $colname;
+			} else if ($this->columns[$colname]) {
+				$this->sortby = $colname;
+				$this->sortdir = $this->columns[$colname]["defaultsortorder"];
+			} else {
+				$this->sortby = $defaultcol;
+				$this->sortdir = $this->columns[$defaultcol]["defaultsortorder"];
+			}
+		} elseif (isset($_SESSION["tablesorts"][$this->tablename])) {
+			$this->sortby = $_SESSION["tablesorts"][$this->tablename]["column"];
+			$this->sortdir = $_SESSION["tablesorts"][$this->tablename]["dir"];
+		} else {
+			$this->sortby = $defaultcol;
+			$this->sortdir = (empty($this->columns[$defaultcol]["defaultsortorder"])) ? null : $this->columns[$defaultcol]["defaultsortorder"];
+		}
+		$_SESSION["tablesorts"][$this->tablename]["column"] = $this->sortby;
+		$_SESSION["tablesorts"][$this->tablename]["dir"] = $this->sortdir;
+	}
+
+	function getFiltervalue($filter) {
+		if (array_key_exists($filter, $this->filters)) {
+			return empty($_SESSION["tablefilters"][$this->tablename][$filter]) ? null : $_SESSION["tablefilters"][$this->tablename][$filter];
+		} else {
+			trigger_error("Cannot return value of filter '".$filter."': filter not defined", E_USER_NOTICE);
+			return false;
+		}
+	}
+
+	function setFilter($filter, $value) {
+		if (array_key_exists($filter, $this->filters)) {
+			$_SESSION["tablefilters"][$this->tablename][$filter] = $value;
+			$this->filters[$filter]["value"] = $value;
+		}
+	}
+
+	function addFooter($values) {
+		$this->footer=array();
+		foreach ($values as $col=>$value) {
+			if (array_key_exists($col, $this->columns) or $col=="_level") {
+				$this->footer[$col] = $value;
+			}
+		}
+	}
+
+	function addRow($values, $hrefs=false, $childrows=false) {
+		$nextrow = sizeof($this->data);
+		foreach ($values as $col=>$value) {
+			if (array_key_exists($col, $this->columns) or $col=="_level") {
+				$this->data[$nextrow][$col]["value"] = $value;
+				if (!empty($hrefs[$col])) $this->data[$nextrow][$col]["href"] = $hrefs[$col];
+			}
+		}
+		if ($childrows && is_array($childrows) && sizeof($childrows) > 0) {
+			if (!$this->haschildrows) $this->haschildrows = true;
+			$this->data[$nextrow]["_level"]["value"] = $this->PARENT;
+			foreach ($childrows as $rowdata) {
+				$rowdata["_level"] = $this->CHILD;
+				$this->addRow($rowdata);
+			}
+		}
+	}
+
+	function setCellClass($colname, $classname) {
+		$this->data[sizeof($this->data)-1][$colname]["class"] = $classname;
+	}
+
+	function clear() {
+		$this->data = array();
+		$this->footer = array();
+		$this->haschildrows = false;
+	}
+
+	function outputTable() {
+		if ($this->title) echo "<h4>".$this->title."</h4>";
+		?>
+		<table class="data" id="<?=$this->tablename?>">
+		<thead>
+		<tr>
+		<?php
+		if ($this->haschildrows) {
+			echo "<th style=\"width: 13px; padding: 2px 0 2px 0;\"></th>";
+		}
+		foreach($this->columns as $colname=>$params) {
+			echo "<th";
+			if ($this->sortby == $colname) echo " class=\"sort".strtolower($this->sortdir)."\"";
+			if ($params["width"]) echo " style=\"width: ".$params["width"]."px\"";
+			echo ">";
+			$parts = explode("/", $_SERVER["PHP_SELF"]);
+			if ($this->sortable) echo "<a href=\"".end($parts)."?s=".$colname."\">";
+			echo $params["label"];
+			if ($this->sortable) echo "</a>";
+			echo "</th>\n";
+		}
+		?>
+		</tr>
+		</thead>
+		<tbody>
+		<?php
+		if (!sizeof($this->data)) {
+			?>
+			<tr>
+			<td colspan="<?=sizeof($this->columns)?>"><em>There are no <?=(substr($this->objname, strlen($this->objname)-1, 1)=="y")?substr($this->objname, 0, strlen($this->objname)-1)."ies":$this->objname.((substr($this->objname, strlen($this->objname)-1, 1)=="s")?"":"s")?> that match your criteria</em></td>
+			</tr>
+			<?php
+		} else {
+			$cols = array_keys($this->columns);
+			foreach($this->data as $row) {
+				echo "<tr".((isset($row["_level"]["value"]) and $row["_level"]["value"] == $this->CHILD)?" class=\"childrow\"":"").">";
+				if ($this->haschildrows) {
+					echo "<td class=\"childtd\">".(($row["_level"]["value"] == $this->PARENT)?"<img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/imgs/tree/plus.png\" style=\"width: 9px; height: 9x;\" onclick=\"toggleChildRows(this)\" />":"")."</td>";
+				}
+				foreach ($cols as $col) {
+					if ($this->columns[$col]["highlightfilter"]) {
+						if (array_key_exists($this->columns[$col]["highlightfilter"], $this->filters)) {
+							$srhstr = $this->filters[$this->columns[$col]["highlightfilter"]]["value"];
+							if (is_string($srhstr)) {
+								$row[$col]["value"] = preg_replace("/(".preg_quote($srhstr, "/").")(?=[^>]*(<|$))/i", "<span class=\"srhhl\">$1</span>", $row[$col]["value"]);
+							}
+						}
+					}
+					echo "<td";
+					if ($this->columns[$col]["ralign"]) echo " style=\"text-align: right\"";
+					if (isset($row[$col]["class"])) echo " class=\"".$row[$col]["class"]."\"";
+					echo ">";
+					if (isset($row[$col]["href"])) echo "<a href=\"".$this->columns[$col]["hrefprefix"].$row[$col]["href"]."\">";
+					if (isset($row[$col]["value"])) echo $row[$col]["value"];
+					if (isset($row[$col]["href"])) echo "</a>";
+					echo "</td>";
+				}
+				echo "</tr>\n";
+			}
+		}
+		?>
+		</tbody>
+		<?php
+		if (sizeof($this->footer)) {
+			echo "<tfoot><tr>";
+			foreach ($cols as $col) {
+				echo "<td";
+				if ($this->columns[$col]["ralign"]) echo " style=\"text-align: right\"";
+				echo ">";
+				if (isset($this->footer[$col])) echo $this->footer[$col];
+				echo "</td>";
+			}
+			echo "</tr></tfoot>";
+		}
+		?>
+		</table>
+		<?php
+		$ret = ob_get_contents();
+		ob_clean();
+		return $ret;
+	}
+
+	function outputFilterform() {
+		if (sizeof($this->filters)) {
+			$parts = explode("/", $_SERVER["PHP_SELF"]);
+			?>
+			<h3>Apply Filters</h3>
+			<form method="get" action="<?php $pathparts = explode("/", $_SERVER["PHP_SELF"]); echo end($pathparts); ?>" class="filters" name="filters">
+			<input type="hidden" name="fil_set" value="1" />
+			<?php
+			foreach($this->filters as $name=>$params) {
+				switch($params["type"]) {
+					case "partialtext":
+					case "exacttext":
+					case "lowdate":
+					case "highdate":
+						?><label for="fil_<?=$name?>" accesskey="<?=$params["accesskey"]?>"><?=preg_replace("/(".$params["accesskey"].")/i", "<u>$1</u>", $params["label"], 1)?>:</label><br /><input type="text" name="fil_<?=$name?>" id="fil_<?=$name?>" value="<?=$params["value"]?>" /><br /><br /><?php
+						break;
+					case "radio":
+						// TODO:AB:20060104
+						break;
+					case "check":
+						?><?=$params["label"]?>:<br /><?php
+						$selectedopts = $this->getFiltervalue($name);
+						if (!$selectedopts) $selectedopts = array();
+						$i=1;
+						foreach($params["options"] as $key=>$option) {
+							?><input type="checkbox" name="fil_<?=$name?>[]" id="fil_<?=$name?>_<?=++$i?>" value="<?=$key?>"<?=(in_array($key, $selectedopts))?" checked=\"checked\"":""?> /> <label for="fil_<?=$name?>_<?=$i?>"><?=$option?></label><br /><?php
+						}
+						echo "<br />";
+						break;
+					case "select":
+						?><label for="fil_<?=$name?>" accesskey="<?=$params["accesskey"]?>"><?=preg_replace("/(".$params["accesskey"].")/i", "<u>$1</u>", $params["label"], 1)?>:</label><br />
+						<select name="fil_<?=$name?>" id="fil_<?=$name?>">
+						<?=(($params["allowblank"])?"<option value=\"\"></option>":"")?>
+						<?php
+						$selectedopt = $this->getFiltervalue($name);
+						foreach($params["options"] as $key=>$option) {
+							?><option value="<?=$key?>"<?=($key==$selectedopt)?" selected=\"selected\"":""?> /><?=$option?></option><?php
+						}
+						echo "</select><br /><br />";
+						break;
+				}
+			}
+			?>
+			<input type="submit" value="Update" class="button" />
+			</form>
+			<?php
+			$ret = ob_get_contents();
+			ob_clean();
+			return $ret;
+		} else {
+			return "";
+		}
+	}
+
+	function outputCsv($delim=",", $escape="\\", $lineend="\n", $enclose="\"") {
+		$opdata = array();
+		foreach($this->columns as $colname=>$params) {
+			$opdata[0][] = $params["label"];
+		}
+		if (sizeof($this->data)) {
+			$cols = array_keys($this->columns);
+			foreach($this->data as $row) {
+				$thisrow = array();
+				foreach ($cols as $col) $thisrow[] = @$row[$col]["value"];
+				$opdata[] = $thisrow;
+			}
+		}
+		$op = "";
+		foreach($opdata as $row) {
+			foreach($row as $colkey=>$col) $row[$colkey] = $enclose.addslashes($col).$enclose;
+			$op .= join($delim, $row).$lineend;
+		}
+		return $op;
+	}
+
+	// Attempts to parse "human"-format dates; converts british date order to
+	// american, and then strtotimes it.
+	function convertHumanTime($date) {
+		$days = '0?[1-9]|[12][0-9]|3[01]';
+		$months = '0?[1-9]|1[0-2]';
+		$year = '\d{2}|\d{4}';
+		$non_alpha = '[^0-9a-zA-Z]+';
+		$date = preg_replace( "/^\s*($days)($non_alpha)($months)($non_alpha)($year)/", "$3/$1/$5", $date);
+		$date = strtotime($date);
+		if ($date === -1) return false;
+		else return $date;
+	}
+}
+
+if (!class_exists('Datatable')) {
+        class Datatable extends DatatableForMySQLV2 {
+        }
+}
+

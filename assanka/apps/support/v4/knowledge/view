@@ -1,0 +1,66 @@
+<?php
+require_once("../appglobal");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+
+// Check that a proper ID has been supplied
+if (!is_numeric($_GET["id"])) $page->redirectAndAlert("Could not find that knowledge item");
+
+// Run the query to pull out data required
+$qry = "SELECT * FROM knowledge WHERE {id}";
+if (!empty($_SESSION["support"]["permissions"])) {
+	$qry .= " AND (".$_SESSION["support"]["permissions"].")";
+}
+if ($page->getSetting("kbclient")) {
+	$qry .= " AND client='".$page->getSetting("kbclient")."'";
+}
+if ($page->getSetting("kbproj")) {
+	$qry .= " AND project='".$page->getSetting("kbproj")."'";
+}
+$row = $sdb->queryRow($qry, $_GET);
+if (!$row) $page->redirectAndAlert("Could not find that knowledge item");
+
+$row["clientproject"] = ($row["client"].$row["project"]?$row["client"].($row["project"]?(" ".$row["project"]):""):"<em>None</em>");
+$row["reqlink"] = (is_numeric($row["supportrequestid"])?("<a href=\"requests/view?id=".$row["supportrequestid"]."\">".Common::xmlentities($sdb->querySingle("SELECT title FROM requests WHERE id=".$row["supportrequestid"].""))." (#".$row["supportrequestid"].")</a>"):"<em>None</em>");
+
+$cl = new Columnlist();
+$cl->addField("author", array("label"=>"Created by"));
+$cl->addField("clientproject", array("label"=>"Project"));
+$cl->addField("modified", Model::$fields["datemodified"]);
+$cl->addField("reqlink", array("label"=>"Linked support request"));
+$cl->addData($row);
+
+// Check whether the user has the authority to edit this item
+if (!empty($_SESSION["support"]["userid"])) {
+	$isdeveloper = $sdb->queryRow("SELECT isdeveloper FROM permissions WHERE userid=".$_SESSION["support"]["userid"]." AND ((client='".$row["client"]."' AND project='".$row["project"]."') OR (client='".$row["client"]."' AND project IS NULL) OR (client IS NULL AND project IS NULL)) ORDER BY (project IS NOT NULL AND client IS NOT NULL) DESC, (client IS NOT NULL) DESC LIMIT 1");
+} else {
+	$isdeveloper = false;
+}
+
+// Add action buttons
+if ($isdeveloper) {
+	$page->addAction("Edit", "knowledge/edit?id=".$_GET["id"]);
+	$page->addAction("Delete", array("href"=>"knowledge/delete", "data"=>array("id"=>$_REQUEST["id"]), "javascript"=>"return confirm('Really delete this knowledge item?');"));
+}
+$page->addAction("Go to index", "knowledge/");
+
+// Output the item
+$page->set("title", "View knowledge item");
+$page->set("contenttitle", $row["title"]);
+$page->add("screenstyleincludes", "lib/css/kb.css");
+$page->add("content",$cl->output());
+if ($row["filename"]) {
+	$page->add("content", "<h4>File download</h4>");
+	$page->add("content", "<p class=\"paddedcontent\"><a href=\"getfile?type=knowledge&id=".$_GET["id"]."\">".$row["filename"]."</a></h2>");
+	$page->add("content", "<h4>Description</h4>");
+}
+$page->add("content","<div class=\"kb\">".($row["textcontent"]?$row["textcontent"]:"<p><em>No description available</em></p>")."</div>");
+$page->outputHTML();
+?>

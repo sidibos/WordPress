@@ -1,0 +1,115 @@
+<?php
+/**
+ * CMS Index Page - Lists all pages in the CMS, for a user to select
+ * and edit, sort, add to or delete from. Displays a tree structure
+ * of the site, with all pages visible if there are less than ten;
+ * otherwise, displays a collapsed top-level.
+ *
+ * Accepted Inputs: none
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once("cmslib");
+
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+
+// Config **todo** - get and set the site and language
+$siteid = 1;
+$languageisocode = "en";
+$formats = $db->query("SELECT dateformat, timeformat FROM out_languages WHERE isocode='".$languageisocode."'");
+$formatsrow = $db->fetchrow($formats);
+$dateFormat = $formatsrow["dateformat"];
+$timeFormat = $formatsrow["timeformat"];
+
+// Set session data for on-page editor
+if (!session_id()) session_start();
+$_SESSION["outlineadmin"] = $authuser;
+
+// Check to see if multiple sites exist for this project.
+$result = $db->query("SELECT id, name, webroot FROM out_sites ORDER BY id ASC");
+if (!$db->numresults($result)) {
+	$page->addContent("content", "<em>Project not configured or data missing</em>");
+	$page->render();
+	exit;
+} else if (($db->numresults($result) == 1) or !cmsIsFunctionalityEnabled("multiplesites")) {
+	$row = $db->fetchrow($result);
+	$_SESSION["outlinesiteid"] = $row["id"];
+	$webroot = $row["webroot"];
+} else {
+	$sitesOptionList = "";
+	while ($row = $db->fetchrow($result)) {
+		if(!$_SESSION["outlinesiteid"]) $_SESSION["outlinesiteid"] = $row["id"];
+		if($_GET["siteid"] == $row["id"]) $_SESSION["outlinesiteid"] = $row["id"];
+		if($_SESSION["outlinesiteid"] == $row["id"]) {
+			$webroot = $row["webroot"];
+			
+			// Try and fetch the site URL to use, if present in the tables
+			if ($hostresult = $db->query("SELECT hostname FROM out_sites WHERE id=".$row["id"], true)) {
+				if ($hostname = $db->fetchRow($hostresult)) {
+					$_SESSION["outlinehostname"] = $hostname["hostname"];
+				}
+			}
+		}
+		$sitesOptionList .= "<option value=\"".$row["id"]."\"".(($_SESSION["outlinesiteid"] == $row["id"])?" selected=\"selected\"":"").">".$row["name"]."</option>";
+	}
+}
+
+cmsCheckIfAuth("viewpage", false, $authuser, true, $_SESSION["outlinesiteid"]);
+
+if (!empty($sitesOptionList)) $page->addContent("content", str_replace(array("--sitesOptionList--", "--formaction--"), array($sitesOptionList, "index"), $page->loadExternalContent("html/multisitebar")));
+$page->addContent("content", "<div id=\"oltree\">");
+
+// Add some common javascript to the page
+$page->addContent("content", "<script type=\"text/javascript\" src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/js/outline\"></script>\n");
+$page->addContent("content", "<script type=\"text/javascript\">");
+$page->addContent("content", "var oltree = new OutlineTreeView('".((isset($_SESSION["outlinehostname"]) && $_SESSION["outlinehostname"])?$_SESSION["outlinehostname"]:$_SERVER['HTTP_HOST'])."', '".$webroot."', ".((cmsIsFunctionalityEnabled("versionhistory"))?"true":"false").", 'page');");
+$page->addContent("content", "</script>");
+
+// Import some CSS
+$page->addContent("content", "<style type=\"text/css\">@import url(\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/css/outline\");</style>");
+
+// Check for the presence of a home page - if it exists retrieve it and any active drafts
+$result = $db->query("SELECT out_localcontent.id, out_versions.id AS versionid, out_items.id AS itemid, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as datecreated, authoruser, draftuser, cfg_adminusers.name AS author, islive FROM out_items LEFT JOIN out_localcontent ON out_items.id = out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id = out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser WHERE tag='homepage' AND (islive=1 OR draftuser IS NOT NULL) AND siteid='".$_SESSION["outlinesiteid"]."' AND languageisocode='".$languageisocode."' ORDER BY islive DESC, draftuser!='".$db->sqlenc($_SESSION["outlineadmin"])."' ASC, datecreated ASC");
+
+// If a home page is present, output it as an editable page
+if ($db->numresults($result)) {
+	$row = $db->fetchrow($result);
+	$homepageid = $row["itemid"];
+	
+	// Add the drafts
+	$draftshtml = "";
+	$originalversionid = $row["versionid"];
+	while ($drow = $db->fetchrow($result)) {
+		$draftshtml .= getDraftHTML($originalversionid, $drow["versionid"], $drow["draftuser"], $drow["authoruser"], $drow["author"], false);
+	}
+	$iseditable = ((cmsCheckIfAuth("editpage", "homepage", false, false, $_SESSION["outlinesiteid"]))?true:false);
+	$issortable = ((cmsCheckIfAuth("sortpage", "homepage", false, false, $_SESSION["outlinesiteid"]))?true:false);
+	$page->addContent("content", getTreeViewRow($row["id"], ($row["title"])?$row["title"]:"Home Page", "homepage", $row["author"], $row["datecreated"], $iseditable, true, false, $issortable, false, true, "visible", $draftshtml, false));
+	
+// If no home page is present in the DB, create a non-editable
+// home page as a top-level folder
+} else {
+	$homepageid = false;
+	$issortable = ((cmsCheckIfAuth("sortpage", "homepage", false, false, $_SESSION["outlinesiteid"]))?true:false);
+	$page->addContent("content", getTreeViewRow("0", "Home Page", "homepage", "", "This page is managed outside the CMS", false, true, false, $issortable, false, true, "visible", "", false));
+}
+
+// Fetch all pages for which the home page is a parent; this calls
+// a recursive function to generate the folder tree.
+if ($homepageid) outlineGetChildren("(parentid IS NULL OR parentid=0 OR parentid=".$homepageid.") AND tag!='homepage'", 1, $languageisocode, $dateFormat, $timeFormat, $_SESSION["outlinesiteid"], $authuser, true, false);
+else outlineGetChildren("(parentid IS NULL OR parentid=0) AND tag!='homepage'", 1, $languageisocode, $dateFormat, $timeFormat, $_SESSION["outlinesiteid"], $authuser, true, false);
+
+$page->addContent("content", "</div>");
+
+// Add actions and content to the sidebar
+$page->addContent("context", $page->loadExternalContent("html/indexsidebar"));
+$page->addAction("add", "Add Page", "new");
+$page->addAction("edit", "Edit Page", "edit", false, false, true);
+$page->addAction("sort", "Sort Subsections", "sort", false, false, true);
+$page->addAction("history", "Page History", "viewhistory", false, false, true);
+$page->addAction("delete", "Delete", false, "oltree.submitfordelete()", false, true);
+
+$page->render();
+?>

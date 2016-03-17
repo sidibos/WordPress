@@ -1,0 +1,34 @@
+#!/usr/bin/php
+<?php
+/**
+ * Posts an error debug log to the support system
+ *
+ * Command line PHP script that is invoked by the error handler class to send debug logs to the support system.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Reporting host
+$host = "http://utils.support.assanka.com";
+
+// Count the number of postreport processes running, don't continue if there's one running already
+// REVIEW:AB: This could be done a bit more intelligently.  the only solution that is worth implementing a change for is one that switches based on something unique to the process, ie the PID.  So if there are 50 running, we need a formula that selects 1 in 10 to continue, and sleeps the rest for 1 second. Then there will be 45 running, whereupon we need to select 1 in 9. So take the number of processes, divide by 5 (number we can handle per second), round to nearest whole number, then do PID % that number, and if the result is zero, proceed.
+$numproc = trim(shell_exec('ps aux |grep -c postreport'));
+if (is_numeric($numproc)) sleep(rand(0,$numproc));
+
+$path = $_SERVER["argv"][1];
+if (!$path) exit("No log file name provided");
+if (!is_file($path)) exit("Error log file not found");
+
+// Post the file via curl (v to output headers sent and received, s to silence the progress indicator, S to enable error reporting)
+$hostname = trim(shell_exec('hostname'));
+$cmd = "curl -vsS -F ".escapeshellarg('debug=<'.$path)." -F ".escapeshellarg("hostname=".$hostname)." -F ".escapeshellarg("path=".$path)." -A 'Error handler v5' --max-time 10 '".$host."/receivereport' 2>&1";
+$buffer = shell_exec($cmd);
+
+// Delete the temporary file, rename the posted file, and catch errors
+if (is_file($path) and !is_file($path."-posted")) rename($path, $path."-posted");
+if (strpos($buffer, "Error report posted successfully") === false) {
+	$errlog = file_get_contents($path."-posted");
+}
+
+echo "Complete";

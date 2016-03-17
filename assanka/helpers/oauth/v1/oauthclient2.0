@@ -1,0 +1,71 @@
+<?php
+/**
+ * An oAuth client for oAuth 2.0
+ *
+ * Supports oAuth 2.0 Web server flow.  Has been tested against Facebook's Graph API.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+
+require_once $_SERVER['CORE_PATH'].'/helpers/oauth/v1/oauthclient';
+
+class OAuthClient2_0 extends OAuthClientV1 {
+
+	private $_thisurl, $_scheme, $_authoriseUrl, $_accessTokenUrl, $_consumerKey, $_consumerSecret, $_accesstok;
+
+	public function __construct($urlprefix, $authoriseUrl, $accessTokenUrl, $consumerKey, $consumerSecret, $scope=null) {
+		$this->_authoriseUrl = $urlprefix.$authoriseUrl;
+		$this->_accessTokenUrl = $urlprefix.$accessTokenUrl;
+		$this->_consumerKey = $consumerKey;
+		$this->_consumerSecret = $consumerSecret;
+		$this->_scope = $scope;
+		$this->_thisurl = "http".((empty($_SERVER['HTTPS']))?"":"s")."://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		$this->_thisurl = preg_replace("/([\?\&])code=[^\&]*/i", '\\1', $this->_thisurl);
+		$this->_thisurl = preg_replace("/[\?\&]$/i", '', $this->_thisurl);
+	}
+
+	public function authorise() {
+		if (isset($_GET['error'])) {
+			throw new AuthException($_GET['error'], 0, null, get_defined_vars());
+		} elseif (isset($_GET['code'])) {
+			if (strpos($this->_accessTokenUrl, '?') === false) $this->_accessTokenUrl .= '?';
+			else $this->_accessTokenUrl .= '&';
+			$this->_accessTokenUrl .= http_build_query(array(
+				'client_id' => $this->_consumerKey,
+				'redirect_uri' => $this->_thisurl,
+				'client_secret' => $this->_consumerSecret,
+				'code' => $_GET['code'],
+			));
+			$req = new HTTPRequest($this->_accessTokenUrl);
+			$resp = $req->send();
+			parse_str($resp->getBody(), $token);
+			if (empty($token['access_token'])) {
+				$error = json_decode($resp->getBody(), true);
+				throw new AuthException($error['error']['message'], 0, null, get_defined_vars());
+			}
+			$this->setCredentials($token);
+			return $token;
+		} else {
+			if (strpos($this->_authoriseUrl, '?') === false) $this->_authoriseUrl .= '?';
+			else $this->_authoriseUrl .= '&';
+			$this->_authoriseUrl .= http_build_query(array(
+				'client_id' => $this->_consumerKey,
+				'oauth_client_identifier' => $this->_consumerKey,
+				'oauth_callback_url' => $this->_thisurl,
+				'redirect_uri' => $this->_thisurl,
+				'scope' => $this->_scope,
+			));
+			header("Location: ".$this->_authoriseUrl);
+			exit;
+		}
+
+	}
+	public function setCredentials($access_token, $token_secret=null) {
+		 $this->_accesstok = $access_token;
+	}
+	protected function _modifyreqparams(&$params) {
+		$params['access_token'] = $this->_accesstok;
+	}
+}

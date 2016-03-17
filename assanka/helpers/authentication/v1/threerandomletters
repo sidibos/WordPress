@@ -1,0 +1,256 @@
+<?php
+
+require_once("auth");
+
+class AuthThreeRandomLetters extends Auth {
+
+	protected $templatedir, $templateparent, $logouttemplateparent, $dbtable;
+
+	public function AuthThreeRandomLetters (&$db, $dbtable) {
+		parent::Auth();
+		$this->db = $db;
+		$this->dbtable = $dbtable;
+		$this->templatedir = __FILE__."/../html_threerandomletters";
+		$this->templateparent = "parent";
+		$this->logouttemplateparent = "parent";
+	}
+
+
+	public function authenticate() {
+		if (empty($this->authenticateduser)) {
+			if (empty($_SESSION["auth"]["cache"])) {
+				$this->processLogin();
+			} else {
+				$this->authenticateduser = $_SESSION["auth"]["cache"]["email"];
+				$this->rights = $_SESSION["auth"]["cache"]["rights"];
+				$this->user = $_SESSION["auth"]["cache"]["details"];
+			}
+		}
+	}
+
+	public function checkRights($requiredrights=false, $redirectonbad=true) {
+		if (empty($this->authenticateduser)) {
+			if (empty($_POST["email"])) {
+				$this->showLoginStageOne();
+			} else {
+				$this->showLoginStageTwo($_POST["email"]);
+			}
+		}
+		if (!$requiredrights) return true;
+		$isvalid = $this->hasRights($requiredrights, $this->rights);
+		if (!$isvalid and $redirectonbad) {
+			$this->showInsufficientRights($requiredrights);
+		} else {
+			return $isvalid;
+		}
+	}
+
+	public function getDetailsForUser($email) {
+		$dets = $this->db->querySingle("SELECT details FROM `".$this->dbtable."` WHERE {email}", array("email"=>$email));
+		return ($dets) ? unserialize($dets) : false;
+	}
+
+	public function setTemplateDirectory($templatedir) {
+		if (!is_string($templatedir)) return false;
+		$this->templatedir = $templatedir;
+	}
+
+	public function setTemplateParent($templateparent) {
+		if (!is_string($templateparent)) return false;
+		$this->templateparent = $templateparent;
+	}
+
+	public function setLogoutTemplateParent($logouttemplateparent) {
+		if (!is_string($logouttemplateparent)) return false;
+		$this->logouttemplateparent = $logouttemplateparent;
+	}
+
+	protected function template($filename, $pagetitle = "Authentication", $wrappertemplate = false) {
+		$op = file_get_contents($this->templatedir."/".$filename.".html");
+		if (empty($wrappertemplate)) $wrappertemplate = $this->templateparent;
+		if (!empty($wrappertemplate)) {
+			$op = str_replace(array("<!--@authentication-->", "<!--@pagetitle-->"), array($op, $pagetitle), file_get_contents($this->templatedir."/".$wrappertemplate.".html"));
+		}
+		return $op;
+	}
+
+	protected function showLoginStageOne() {
+		header("HTTP/1.1 200 OK");
+		header("Content-type: text/html");
+		echo $this->template("loginstageone", "Login required");
+		exit;
+	}
+
+	protected function showLoginStageTwo($email) {
+		if (empty($email)) trigger_error("No email address supplied", E_USER_ERROR);
+
+		// Get password and split it into letters
+		$password = $this->db->querySingle("SELECT password FROM `".$this->dbtable."` WHERE {email}", array("email"=>$email));
+
+		if (empty($password)) {
+			header("HTTP/1.1 200 OK");
+			header("Content-type: text/html");
+			echo $this->template("emailnotfound", "Email address not found");
+			exit;
+		}
+		if (strlen($password) < 5) {
+			header("HTTP/1.1 200 OK");
+			header("Content-type: text/html");
+			echo $this->template("passwordtooshort", "Password too short");
+			exit;
+		}
+		$_SESSION["auth"]["login"]["email"] = $email;
+		$passwordchars = str_split($password, 1);
+
+		// Choose the numbers of 3 random letters from the password
+		$charnums = array_rand(array_keys($passwordchars), 3);
+		sort($charnums);
+
+		// Convert these numbers into ordinals
+		// And store them in the session
+		$dispcharnums = array();
+		unset($_SESSION["auth"]["login"]["chars"]);
+		foreach($charnums as $k => $v) {
+			$dispcharnums[$k] = $this->ordinal_suffix($v+1);
+			$_SESSION["auth"]["login"]["chars"][] = $passwordchars[$v];
+		}
+
+		// Show form asking for the three random letters from the password
+		header("HTTP/1.1 200 OK");
+		header("Content-type: text/html");
+		$op = $this->template("loginstagetwo", "Login required (stage 2)");
+		$op = str_replace(array("<!--@passwordone-->", "<!--@passwordtwo-->", "<!--@passwordthree-->"), $dispcharnums, $op);	
+		echo $op;
+		exit;
+	}
+
+
+	protected function showLogout() {
+		header("HTTP/1.1 200 OK");
+		header("Content-type: text/html");
+		echo $this->template("logout", "Logout complete", $this->logouttemplateparent);
+		exit;
+	}
+
+	protected function processLogin() {
+		if (empty($_POST["password"])) return false;
+		if (empty($_SESSION["auth"]["login"]["email"])) return false;
+		if (empty($_SESSION["auth"]["login"]["chars"]) or !is_array($_SESSION["auth"]["login"]["chars"]) or !sizeOf($_SESSION["auth"]["login"]["chars"])) {
+			return false;
+		}
+
+		// Log the user in if submitted data correct
+		// Use http_build_query to compare both array keys and values
+		if (http_build_query($_SESSION["auth"]["login"]["chars"]) == http_build_query($_POST["password"])) {
+			$this->authenticateduser = $_SESSION["auth"]["login"]["email"];
+
+			$user = $this->db->queryRow("SELECT details, rights FROM `".$this->dbtable."` WHERE {email}", $_SESSION["auth"]["login"]);
+			$_SESSION["auth"]["cache"]["email"] = $_SESSION["auth"]["login"]["email"];
+			$_SESSION["auth"]["cache"]["details"] = $this->user = unserialize($user["details"]);
+			$_SESSION["auth"]["cache"]["rights"] = $this->rights = explode(",", $user["rights"]);
+			unset($_SESSION["auth"]["login"]);
+
+			return true;
+		} else {
+
+			// Display login failed
+			header("HTTP/1.1 200 OK");
+			header("Content-type: text/html");
+			echo $this->template("loginfailed", "Login failed");
+			exit;
+		}
+	}
+
+	public function setPassword($email, $password) {
+		$params["email"] = $username;
+		$params["password"] = $password;
+		$this->db->query("REPLACE INTO `".$this->dbtable."` SET {email}, {password}", $params);
+	}
+
+	public function setDetails($data, $email=false) {
+		if (empty($email)) {
+			if (!$this->authenticateduser) {
+				trigger_error("Cannot set details of current user - no user is logged in", E_USER_ERROR);
+			}
+			$email = $this->authenticateduser;
+		}
+		$params["email"] = $email;
+		$params["details"] = serialize($data);
+		$this->db->query("UPDATE `".$this->dbtable."` SET {details} WHERE {email}", $params);
+		if ($email==$this->authenticateduser) $_SESSION["auth"]["cache"]["details"] = $data;
+	}
+
+	public function grantRight($right, $email=false) {
+		$params = array();
+		if (!$email) {
+			if (!$this->authenticateduser) trigger_error("Cannot grant rights to current user - no user is logged in", E_USER_ERROR);
+			$email = $this->authenticateduser;
+			if (!in_array($right, $this->rights)) {
+				$this->rights[] = $right;
+				$params["email"] = $email;
+				$params["rights"] = join(",", $this->rights);
+			}
+		} else {
+			$existingrights = explode(",", $this->db->querySingle("SELECT rights FROM `".$this->dbtable."` WHERE email='".$this->db->sqlenc($username)."'"));
+			if (!in_array($right, $existingrights)) {
+				$existingrights[] = $right;
+				$params["email"] = $email;
+				$params["rights"] = join(",", $existingrights);
+			}
+		}
+		if (!empty($params)) $this->db->query("UPDATE `".$this->dbtable."` SET {rights} WHERE {email}", $params);
+	}
+
+	public function revokeRight($right, $email=false) {
+		if (!$email) {
+			if (!$this->authenticateduser) {
+				trigger_error("Cannot revoke rights of current user - no user is logged in", E_USER_ERROR);
+			}
+			$email = $this->authenticateduser;
+			if (in_array($right, $this->rights)) {
+				array_splice($this->rights, array_search($right, $this->rights), 1);
+				$params["email"] = $email;
+				$params["rights"] = join(",", $this->rights);
+			}
+		} else {
+			$existingrights = explode(",", $this->db->querySingle("SELECT rights FROM `".$this->dbtable."` WHERE email='".$this->db->sqlenc($email)."'"));
+			if (in_array($right, $existingrights)) {
+				array_splice($existingrights, array_search($right, $existingrights), 1);
+				$params["email"] = $email;
+				$params["rights"] = join(",", $existingrights);
+			}
+		}
+		if ($params) $this->db->query("UPDATE `".$this->dbtable."` SET {rights} WHERE {email}", $params);
+	}
+
+	public function setRights($rights, $email=false) {
+		if (!$email) {
+			if (!$this->authenticateduser) {
+				trigger_error("Cannot set rights of current user - no user is logged in", E_USER_ERROR);
+			}
+			$email = $this->authenticateduser;
+			$params = array("email"=>$email, "rights"=>$rights);
+			$this->rights = explode(",", $rights);
+		} else {
+			$params = array("email"=>$email, "rights"=>$rights);
+		}
+		$this->db->query("UPDATE `".$this->dbtable."` SET {rights} WHERE {email}", $params);
+	}
+
+	// Function to convert 1, 2, 3 to 1st, 2nd, 3rd etc
+	// Written by Marcus L. Griswold (vujsa)
+	// Can be found at http://www.handyphp.com
+	protected function ordinal_suffix($value){
+		if (!is_numeric($value)) return false;
+		if(substr($value, -2, 2) == 11 || substr($value, -2, 2) == 12 || substr($value, -2, 2) == 13) $suffix = "th";
+		elseif (substr($value, -1, 1) == 1) $suffix = "st";
+		else if (substr($value, -1, 1) == 2) $suffix = "nd";
+		else if (substr($value, -1, 1) == 3) $suffix = "rd";
+		else $suffix = "th";
+		return $value.$suffix;
+	}
+}
+
+
+
+?>

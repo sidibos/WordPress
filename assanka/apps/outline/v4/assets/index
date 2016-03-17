@@ -1,0 +1,76 @@
+<?php
+/**
+ * CMS assets page - displays all assets in the system.
+ *
+ * Accepted Inputs: none
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once("../lib/inc/global");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+$auth->checkRights("outline.user");
+
+$formatsrow = $db->queryRow("SELECT dateformat, timeformat FROM out_languages WHERE isocode=%s", $_SESSION["outline"]["language"]);
+$dateFormat = $formatsrow["dateformat"];
+$timeFormat = $formatsrow["timeformat"];
+
+outlineCheckIfAuth("viewasset", false, $auth->user["username"], true);
+
+$page->set("treeviewjs", "'".((!empty($_SESSION["outline"]["sites"][$_SESSION["outline"]["currentsiteid"]]["hostname"]))?$_SESSION["outline"]["sites"][$_SESSION["outline"]["currentsiteid"]]["hostname"]:$_SERVER['HTTP_HOST'])."', '".$_SESSION["outline"]["sites"][$_SESSION["outline"]["currentsite"]]["webroot"]."', ".((outlineIsFunctionalityEnabled("versionhistory"))?"true":"false").", 'asset'");
+$treehtml = "";
+
+// Pull out all assets in the database, including all drafts if any
+$result = $db->query("SELECT i.id as itemid, l.id as contentid, v.id AS versionid, title, DATE_FORMAT(datecreated, %s) as datecreated, authoruser, draftuser, tag, visibility FROM out_items i LEFT JOIN out_localcontent l ON i.id = l.itemid LEFT JOIN out_versions v ON l.id = v.localcontentid WHERE type=%s AND (islive=1 OR draftuser IS NOT NULL) AND languageisocode=%s ORDER BY draftuser IS NULL DESC, sortindex, IF(draftuser IS NULL, title, draftuser!=%s) ASC, datecreated ASC", $dateFormat." ".$timeFormat, 'asset', $_SESSION["outline"]["language"], $db->sqlenc($auth->user["username"]));
+
+// Set up a variable to store asset rows, for grouping of live and drafts, before outputting at end
+$rowsarray = array();
+
+// Step through the assets
+while ($row = $db->getRow($result)) {
+	$author = $row["authoruser"]?$auth->getDetailsForUser($row["authoruser"]):false;
+	$islive = $isdeleteable = $iseditable = (($row["draftuser"] == "")?true:false);
+
+	// If this row doesn't already exist in the row array, create an entry for it
+	if (empty($rowsarray[$row["contentid"]])) {
+	
+		$rowsarray[$row["contentid"]] = array("contentid"=>$row["contentid"], "title"=>$row["title"], "tag"=>$row["tag"], "author"=>(($author)?$author["displayname"]:$row["authoruser"]), "datecreated"=>$row["datecreated"], "iseditable"=>$iseditable, "isdeleteable"=>$isdeleteable, "islive"=>$islive, "visibility"=>$row["visibility"], "drafthtml"=>"", "firstversionid"=>$row["versionid"]);
+	}
+	
+	// Append a draft record to the row output if this row is a draft
+	if ($row["draftuser"]) $rowsarray[$row["contentid"]]["drafthtml"] .= outlineGetDraftHTML($rowsarray[$row["contentid"]]["firstversionid"], $row["versionid"], $row["draftuser"], $row["authoruser"], (($author)?$author["displayname"]:$row["authoruser"]), true);
+}
+
+// Loop through the asset array and output each row
+foreach ($rowsarray as $row) {
+
+	// Outline extension: allow changes to be made to
+	// the asset before  outputting the tree view row
+	$extendarray = array(&$row);
+	outlineExtend("assetIndexEditRow", $extendarray);
+
+	$treehtml .= outlineGetTreeViewRowHTML($row["contentid"], $row["title"], $row["tag"], $row["author"], $row["datecreated"], $row["iseditable"], false, false, false, $row["isdeleteable"], $row["islive"], $row["visibility"], $row["drafthtml"], false, true);
+}
+
+if (empty($treehtml)) $treehtml = "<br /><em>There are no assets for this site.  Click on 'Add Assets' to the right to create a new asset.</em>";
+
+$page->set("treehtml", $treehtml);
+$page->add("content", $page->render("../lib/tem/index"));
+$page->add("rightnav", $page->render("../lib/tem/indexsidebar"));
+
+$page->addAction("Add Asset", array("domid"=>"add", "href"=>"assets/new"));
+$page->addAction("Edit Asset", array("domid"=>"edit", "href"=>"assets/edit", "hidden"=>true));
+$page->addAction("Sort Subsections", array("domid"=>"sort", "href"=>"assets/sort", "hidden"=>true));
+$page->addAction("Asset History", array("domid"=>"history", "href"=>"assets/viewhistory", "hidden"=>true));
+$page->addAction("Delete", array("domid"=>"delete", "javascript"=>"oltree.submitfordelete()"));
+
+$page->set("title", "View assets");
+$page->outputHTML();
+?>

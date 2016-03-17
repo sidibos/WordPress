@@ -1,0 +1,117 @@
+<?php
+/**
+ * Profanity filter
+ *
+ * Include file containing lists of profanity and replacement
+ * filters
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+
+class ProfanityFilterV1 {
+
+	// A list of words or word parts which are always blocked, even if they fall in
+	// the middle of a word
+	private $blockalways = array("cunt", "clitoral", "clitoris", "bukkake", "fuck", "fucker", "wanker", "dildo", "fellatio", "nigger", "nigga", "bastard", "bitch", "bollocks", "arsehole", "arseface", "asshole", "assface", "raghead", "towelhead", "spastic", "fucktard", "bullshit", "dickhead", "nobhead", "knobhead", "whore");
+
+	// A list of standalone words which should be blocked.  These will be blocked
+	// when they are inidividual words, but not when they are part of other words.
+	// There is some replication from within the other sections, as words here
+	// should also be blocked if they are obfuscated - for example f.u.c.k
+	private $blockwords = array("bugger", "gook", "prick", "cock", "clit", "bukkake", "cunt", "dildo", "wanker", "fuck", "fucker", "jizz", "jism", "nob", "knob", "schlong", "paki", "pakki", "pikey", "piky", "shag", "twat", "muff", "pillock", "retard", "slag", "slut", "dickhead", "nobhead", "knobhead", "penis", "vagina", "shit", "nigger", "nigga", "bastard", "bitch", "bollocks", "asshole", "assface", "arseface", "raghead", "towelhead", "spastic", "fucktard", "bullshit", "dickhead", "nobhead", "tosser", "whore", "pussy", "spunking", "sodding", "crap", "arse");
+
+	// A list of expressions will be caught as standalone words or if the expression
+	// matches.
+	private $blockexpressions = array("tit", "f[aeuoi]+ck[a-z]*", "cl[1i]+t[o0]+r[a-z]*", "d[1i]+ld[o0]+", "n[1i]+gg[ea]+[r]*", "b[i1]+tch", "(arse|ass)h[o0]+[a-z]*", "wank[a-z]*", "(mother|cluster)[ \-]?fuck[a-z]*", "[a-z]*jizz", "(nob|n0b|knob|kn0b|cock|c0ck|prick|pr1ck|dick|d1ck)\-?(suck|head|brain)[a-z]*", "(rag|towel)[ \-]?(top|head)[a-z]*", "poon[ \-]?tang", "blow[ \-]?job", "shagger", "gang[ \-]?bang[a-z]*", "piss[ \-]?off", "sh[i1]+t[a-z]*", "penis[a-z]*", "[a-z]*penis", "vagina[a-z]*", "[a-z]*vagina", "toss[a-hj-z]*", "b.ll.cks", "b[o0]ll[o0][c]*k[a-z]*", "a[\-]?hole", "piss(ing|ed)?");
+
+	// Characters to use for substitution
+	public $blockchars = "*";
+
+	public $appendwarning = "";
+	public $replacewarning = "<span class='profanity' title='A suspected profanity was blocked'><!--@profanity--></span>";
+
+	public function __construct() {
+		foreach ($this->blockwords as $key => $value) {
+			$outputword = "";
+			for ($i = 0; $i < (strlen($value) - 1); $i++) {
+				$outputword .= $value[$i]."\W*";
+			}
+			$outputword .= $value[strlen($value) - 1];
+			$this->blockwords[$key] = $outputword;
+		}
+		$this->pfExpressionsExpanded = true;
+	}
+
+	/**
+	 *  Attempt to remove profanity from a string.
+	 *
+	 * @param string $text the text to filter
+	 * @return string
+	 */
+	public function filter($text) {
+		$didsub = false;
+		$htmlformatting = false;
+
+		// Create a copy of the string without tags, to make matching words easier.
+		$htmltext = $text;
+		$text = preg_replace("/<\/p>/i", "\n\n", $text);
+		$text = preg_replace("/<br(.*?)>/i", "\n", $text);
+		$text = strip_tags($text);
+
+		// First process the expressions to catch combinations or hyphenated variants
+		$blockexprregex = "/\b(".implode($this->blockexpressions, "|").")\b/sie";
+		while (preg_match($blockexprregex, $text, $m)) {
+			$didsub = true;
+			$text = str_replace($m[1], $this->_substitute($m[1]), $text);
+		}
+
+		// Next process the list of standalone words which should be blocked even
+		// when trivially obfuscated.
+		$blockaloneregex = "/\b(".implode($this->blockwords, "|").")\b/sie";
+		while (preg_match($blockaloneregex, $text, $m)) {
+			$didsub = true;
+			$text = str_replace($m[1], $this->_substitute($m[1]), $text);
+		}
+
+		// Finally we want to replace all words which are always blocked, even as part of
+		// another word.
+		$blockalwaysregex = "/(".implode($this->blockalways, "|").")/sie";
+		while (preg_match($blockalwaysregex, $text, $m)) {
+			$didsub = true;
+			$text = str_replace($m[1], $this->_substitute($m[1]), $text);
+		}
+
+		// If no substitution has occurred, we can restore the original version which
+		// may include html.
+		if (!$didsub) {
+			$text = $htmltext;
+		} else {
+
+			// If a substituion has occurred and a warning has been defined, append it.
+			if ($this->appendwarning) $text .= $this->appendwarning;
+			return $text;
+
+		}
+
+		// Return the filtered string.
+		return $text;
+	}
+
+	/**
+	 * Function to produce a replacement string made up of the appropriate characters
+	 *
+	 * @param string $string the string to act on
+	 * @return string
+	 **/
+	private function _substitute($string) {
+		$op = substr(str_repeat(str_shuffle($this->blockchars), ceil(strlen($string) / strlen($this->blockchars))), 0, min(strlen($string), 10));
+		if ($this->replacewarning) {
+			$op = str_replace("<!--@profanity-->", $op, $this->replacewarning);
+		}
+		return $op;
+	}
+}
+
+if (!class_exists('ProfanityFilter')) class_alias('ProfanityFilterV1', 'ProfanityFilter');

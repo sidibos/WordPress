@@ -1,0 +1,162 @@
+<!--
+########################################################
+FCKeditor/editor/dialog/assanka_assets.html
+
+HTML and javascript to enable the insertion of shared assets
+into the FCKeditor window.  These are displayed with a custom
+class, and on saving the assets are linked or separated from
+the original depending on content.
+
+
+Attempts to be extensible and light.  The list of asset titles
+and ids is provided to FCK by the page holding the editor, so the list
+does not need to be loaded every time the dialog is opened.
+In addition, the actual assets are only loaded when selected, using
+an XML request; they're also cached in the dialog window, just in case!
+
+Accepted Inputs:
+none
+
+6th January 2005
+Rowan Beentje
+Assanka Ltd
+########################################################
+
+Assanka start #####################################################
+-->
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" >
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<meta content="noindex, nofollow" name="robots">
+		<script type="text/javascript">
+
+var oEditor = window.parent.InnerDialogLoaded() ;
+var oSample;
+var xmlReq;
+var assetId;
+
+// Insertion of the asset into the FCK editor window.  For simplicity's
+// sake, this just copies the code from the preview window.
+function Ok() {
+	if (document.getElementById("assettypelinked").checked) {
+		assetId = document.getElementById('assetListSel').options[document.getElementById('assetListSel').selectedIndex].value; 
+		assetTitle = document.getElementById('assetListSel').options[document.getElementById('assetListSel').selectedIndex].text; 
+		var markerhtml = '<img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/assetmarker.png" class="linkedasset'+assetId+'" style="';
+		markerhtml += 'border: 0; margin: 0; padding: 0; float: none; display: inline; width: 78px; height: 12px; vertical-align: middle; ';
+		markerhtml += '" title="'+assetTitle+'" alt="'+assetTitle+'" />';
+
+		oEditor.FCK.InsertHtml( markerhtml );
+	} else {
+		oEditor.FCK.InsertHtml( frames['thepreviewframe'].document.getElementById('assettarget').innerHTML );
+	}
+	window.parent.Cancel();
+}
+
+// Prepopulates the list div on load, giving a list of the assets available 
+function loadList() {
+	if (oEditor.FCKConfig.AssetArray.length) {
+		var i = 0;
+		var assetList = document.createElement("SELECT");
+		assetList.size = Math.max(10, (oEditor.FCKConfig.AssetArray.length/2));
+		assetList.setAttribute("id","assetListSel");
+		assetList.onchange = loadAsset;
+		//assetList.setAttribute("onchange","loadAsset");
+		assetList.style.width = 220;
+		assetList.style.height = 150;
+		document.getElementById("assetlistdiv").innerHTML = "";
+		if (!oEditor.FCKConfig.AssetFirstRun) {
+			oEditor.FCKConfig.AssetArray = oEditor.FCKConfig.AssetArray.split('||,||');
+			oEditor.FCKConfig.AssetFirstRun = true;
+		}
+		document.getElementById("assetlistdiv").appendChild(assetList);
+		for (i = 0; i < oEditor.FCKConfig.AssetArray.length; i+=2) {
+			assetList.options[assetList.options.length] = new Option(oEditor.FCKConfig.AssetArray[i], oEditor.FCKConfig.AssetArray[i+1]);
+		}
+		
+	// If no assets are found, display a warning message so they can cancel
+	} else {
+		document.getElementById("assetlistdiv").innerHTML = "<br /><br /> You currently have no digital assets.";
+	}
+}
+
+// Fetches an array.  This is the tricky part...
+function loadAsset() {
+	window.parent.SetOkButton( false ) ;	
+	assetId=document.getElementById('assetListSel').options[document.getElementById('assetListSel').selectedIndex].value; 
+	// First check to see whether an asset has been cached.  If it has, we
+	// can just load the cached version.
+	if (document.getElementById("assetcache"+assetId)) {
+		frames['thepreviewframe'].document.getElementById('assettarget').innerHTML = 
+			document.getElementById("assetcache"+assetId).innerHTML;
+		window.parent.SetOkButton( true ) ;	
+		
+	// If it's not cached, life gets more complex.  We use an XMLHttpRequest
+	// to connect to a supplied php script to fetch the asset... this is done
+	// asynchronously for best feedback potential.
+	} else {
+		frames['thepreviewframe'].document.getElementById('assettarget').innerHTML = "<br /><br />Loading  asset...<br />Contacting Server...";
+		if (window.ActiveXObject) {
+			xmlReq = new ActiveXObject("Microsoft.XMLHTTP");
+		} else {
+			xmlReq = new XMLHttpRequest();
+		}
+		xmlReq.onreadystatechange = xmlHttpRequestStateChange;
+		xmlReq.open("GET", oEditor.FCKConfig.AssetScriptPath+'?id='+assetId, true);
+		xmlReq.send(null);
+	}
+}
+
+// Handle onreadystatechange events from the xmlHttpRequest - used for feedback
+function xmlHttpRequestStateChange() {
+	if (xmlReq.readyState == 2) {
+		frames['thepreviewframe'].document.getElementById('assettarget').innerHTML = frames['thepreviewframe'].document.getElementById('assettarget').innerHTML + "<br />Server Contacted.";
+	} else if (xmlReq.readyState == 3) {
+		frames['thepreviewframe'].document.getElementById('assettarget').innerHTML = frames['thepreviewframe'].document.getElementById('assettarget').innerHTML + "<br />Processing information...";
+	} else if (xmlReq.readyState == 4) {
+		if (xmlReq.status == 200) {
+			processLoadedXmlAsset();
+		} else {
+			frames['thepreviewframe'].document.getElementById('assettarget').innerHTML = "<br /><br />There has been a problem loading this asset.";
+		}
+	}
+}
+
+// Take the loaded asset XML, create a cache, and display the asset preview
+function processLoadedXmlAsset () {
+	if (!xmlReq.responseXML) {
+		alert(xmlReq.responseText);
+		return false;
+	}
+	
+	var response = xmlReq.responseXML.documentElement;
+	var html = response.getElementsByTagName('html')[0].firstChild.data;
+
+	var assetCache = document.createElement("DIV");
+	assetCache.setAttribute("id","assetcache"+assetId);
+	assetCache.innerHTML = html;
+	document.getElementById("assetcachediv").appendChild(assetCache);
+	frames['thepreviewframe'].document.getElementById('assettarget').innerHTML = html;
+	window.parent.SetOkButton( true ) ;	
+}
+		</script>
+	</head>
+	<body onload="loadList(); if (document.getElementById('assetListSel')) { document.getElementById('assetListSel').selectedIndex=0;loadAsset();};" scroll="no" style="overflow: hidden;">
+		<div id="assetlistdiv" style="width: 230px; float:left; height: 150px;"></div>
+	<iframe id="previewframe" src="assets_preview.html" style="width: 230px; height: 150px; border: 1px dashed #555555; float: right;" name="thepreviewframe">
+	Sorry, but we cannot provide a preview function on your browser.
+	</iframe>
+		<div id="assetcachediv" style="clear: both; display: none;"></div>
+		<div style="clear: both; height: 10px; margin: 0 -10px 10px -10px; border-bottom: 1px solid #CEC6B5; overflow: none;">&nbsp;</div>
+		<form style="margin: 0; padding: 0;">
+			<div style="width: 50%; float: right;">
+				<input type="radio" name="assettype" value="unlinked" id="assettypeunlinked" /> <label for="assettypeunlinked">Insert editable, unlinked asset</label>			
+			</div>
+			<input type="radio" name="assettype" value="linked" checked="checked" id="assettypelinked" /> <label for="assettypelinked">Insert linked asset</label>
+		</form>
+	</body>
+</html>
+
+<!--
+Assanka end #######################################################
+--!>

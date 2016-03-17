@@ -1,0 +1,52 @@
+<?php
+/*
+########################################################
+Support area of admin console - proxies a file saved on
+supportutils.assanka.com
+
+08/05/2007
+Will Voelcker
+Assanka Ltd
+########################################################
+*/
+
+//Include files
+require_once("appglobal");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+// Validate ID and type provided in query string
+if (empty($_GET['id']) or !is_numeric($_GET["id"])) exit("Expected numeric input (ID): not supplied");
+if (!($_GET["type"] == "request" or $_GET["type"] == "comment" or $_GET["type"] == "knowledge")) trigger_error("'Type' of uploaded file not provided or invalid", E_USER_ERROR);
+
+// Check permissions
+$inadequateperms = false;
+switch ($_GET["type"]) {
+	case "request":
+		$qry = "SELECT id FROM requests WHERE id=".$_GET["id"];
+		break;
+	case "comment":
+		$requestid = $sdb->querySingle("SELECT requestid FROM comments WHERE {id}", $_GET);
+		if (!$requestid) $page->redirectAndAlert("Could not find a support request associated with that comment", "index");
+		$qry = "SELECT id FROM requests WHERE id=".$requestid;
+		break;
+	case "knowledge":
+		$qry = "SELECT id FROM knowledge WHERE {id}";
+		break;
+}
+if ($_SESSION["support"]["permissions"]) $qry .= " AND (".$_SESSION["support"]["permissions"].")";
+if (!$sdb->querySingle($qry, $_GET)) {
+	$page->redirectAndAlert("You do not have adequate permissions to view that file", "error", "index");
+}
+
+// Output file contents - the variable $http_response_header is automatically populated during file_get_contents
+$response = file_get_contents(SUPPORT_FILES_SAVE_HOST."/getfile?".$_SERVER["QUERY_STRING"]);
+foreach ($http_response_header as $header) header($header);
+echo $response;
+?>

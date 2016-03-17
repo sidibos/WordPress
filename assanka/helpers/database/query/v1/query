@@ -1,0 +1,210 @@
+<?php
+/**
+ * Assanka Advanced query class
+ *
+ * Uses an existing database connection object and provides
+ * ability to built queries in sections, paginate and generate
+ * pagination links
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+class QueryV1 {
+
+	private $select, $from, $where, $groupby, $having, $orderby, $limit;
+	private $db, $queryref, $tb, $data;
+	private $perpage = 50, $numtotal, $numthispage, $numpages, $pageno, $tablename;
+	private $_pagenuminurl = false, $_usedataid = true, $_calculatetotal = true;
+
+	public function __construct(&$db, &$tb=false) {
+		$this->db = $db;
+		$this->where = array();
+		$this->groupby = array();
+		$this->having = array();
+		$this->data = array();
+		if ($tb) {
+			$this->tb = $tb;
+			$this->tablename = $tb->getTableName();
+		} else {
+			$this->tablename = $_SERVER['SCRIPT_NAME'];
+		}
+	}
+
+	public function calculateTotal($bool = true) {
+		$this->_calculatetotal = ($bool)?true:false;
+	}
+
+	public function useDataIdAsDataKey($bool = true) {
+		$this->_usedataid = ($bool)?true:false;
+	}
+
+	public function setRecordsPerPage($num) {
+		if (!is_integer($num) or $num < 1) trigger_error("Cannot set page size smaller than one", E_USER_ERROR);
+		$this->perpage = $num;
+
+		// Reset the page number if using a stored page number
+		if (!$this->_pagenuminurl) $this->pageno = 1;
+	}
+
+
+	public function select($str) { if ($str) $this->select = "SELECT".($this->_calculatetotal?' SQL_CALC_FOUND_ROWS':'')." ".$str; }
+	public function from($str) { if ($str) $this->from = "FROM ".$str; }
+	public function where($str) {
+		if (is_array($str)) $this->where = array_merge($this->where, $str);
+		elseif ($str) $this->where[] = $str;
+	}
+	public function groupby($str) {
+		if (is_array($str)) $this->groupby = array_merge($this->groupby, $str);
+		elseif ($str) $this->groupby[] = $str;
+	}
+	public function having($str) {
+		if (is_array($str)) $this->having = array_merge($this->having, $str);
+		elseif ($str) $this->having[] = $str;
+	}
+	public function orderby($str) { if ($str) $this->orderby = "ORDER BY ".$str; }
+
+	public function execute() {
+		$this->getPageNo();
+		if (!$this->select or !$this->from) trigger_error("At least select and from must be defined before executing the query", E_USER_ERROR);
+		$this->limit = "LIMIT ".(($this->pageno - 1) * $this->perpage).", ".$this->perpage;
+		$qry = "";
+		if ($this->tb) if (!$this->orderby) $this->orderby($this->tb->getSortSQL());
+		if ($this->select) $qry .= $this->select;
+		if ($this->from) $qry .= " ".$this->from;
+		if (count($this->where)) $qry .= " WHERE (".join(") AND (", $this->where).")";
+		if (count($this->groupby)) $qry .= " GROUP BY ".join(", ", $this->groupby);
+		if (count($this->having)) $qry .= " HAVING (".join(") AND (", $this->having).")";
+		if ($this->orderby) $qry .= " ".$this->orderby;
+		$qry .= " ".$this->limit;
+
+		$args = func_get_args();
+		if (is_array($args) and isset($args[0])) {
+			$data = $args[0];
+			$this->queryref = $this->db->query($qry, $data);
+		} else {
+			$this->queryref = $this->db->query($qry);
+		}
+		$this->numthispage = ($this->queryref instanceOf MysqlResultV4) ? count($this->queryref) : $this->db->getNumResults($this->queryref);
+		$this->numtotal = ($this->_calculatetotal) ? $this->db->querySingle("SELECT FOUND_ROWS()") : ((($this->pageno - 1) * $this->perpage) + $this->numthispage);
+		$this->numpages = ceil($this->numtotal / $this->perpage);
+		if ($this->tb) $this->tb->addData($this->getData());
+	}
+
+	public function getNumResultsTotal() {
+		return $this->numtotal;
+	}
+
+	public function getNumResultsThisPage() {
+		return $this->numthispage;
+	}
+
+	public function getNumPages() {
+		return $this->numpages;
+	}
+
+	public function getData() {
+		$this->populateResultSet();
+		return $this->data;
+	}
+
+	public function getList() {
+		$this->populateResultSet();
+		$ret = array();
+		foreach ($this->data as $row) $ret[] = reset($row);
+		return $ret;
+	}
+	public function setPageNo($pageno=false) {
+		if (!empty($pageno)) {
+
+			// If the page number is actually the uri parameter otherwise assume it is numeric and typecast it as such
+			if (preg_match("/^(.*\/)?page-([0-9]+)\/?$/i", $pageno, $m)) {
+				$pageno = $m[2];
+			}
+			$pageno = (int)$pageno;
+			if ($pageno > 0 ) {
+				$this->pageno = $this->_pagenuminurl = $pageno;
+			} else {
+				$this->pageno = 1;
+			}
+		} else {
+			$this->pageno = 1;
+			$params = Common::geturlparams();
+
+			if (!empty($params[0]) and preg_match("/^(.*\/)?page-([0-9]+)\/?$/i", $params[0], $m)) {
+				$this->pageno = $this->_pagenuminurl = $m[2];
+				if ($this->tablename) $_SESSION['datatable'][$this->tablename]['lastusedpage'] = $m[2];
+			}
+			if (!$this->_pagenuminurl and $this->tablename and !empty($_SESSION['datatable'][$this->tablename]['lastusedpage'])) {
+				$this->pageno = $_SESSION['datatable'][$this->tablename]['lastusedpage'];
+			}
+		}
+	}
+	public function getPageNo() {
+		if (!isset($this->pageno)) {
+			$this->setPageNo();
+		}
+		return $this->pageno;
+	}
+
+
+	private function populateResultSet() {
+		if (!count($this->data)) {
+			while (($this->queryref instanceOf MysqlResultV4) ? $row = $this->queryref->getRow() : $row = $this->db->getRow($this->queryref)) {
+				if (isset($row["id"]) and $this->_usedataid) {
+					$this->data[$row["id"]] = $row;
+				} else {
+					$this->data[] = $row;
+				}
+			}
+		}
+	}
+
+	public function generatePagination($paginationroot=null) {
+		$op = "<h3>Results summary</h3>";
+		$op .= "<div class=\"paddedcontent\" id=\"paginationsummary\"><b>";
+		$op .= ($this->numtotal) ? number_format($this->numtotal) : "No";
+		$op .= "</b> ";
+		$op .= ($this->numtotal != 1) ? "items":"item";
+		$op .= " match".(($this->numtotal == 1)?"es":"")." your criteria.";
+		if ($this->numpages > 1) $op .= "<br />Showing page ".number_format($this->pageno)." of ".number_format($this->numpages).".";
+		$op .= "</div>";
+
+		if ($this->numpages > 1) {
+			$uri = isset($paginationroot) ? $paginationroot : $_SERVER["SCRIPT_NAME"];
+			$qs = (empty($_GET)?"":("?".http_build_query($_GET)));
+			$op .= "<div class=\"paginationbar\"><span>";
+			if ($this->pageno == 1) {
+				$op .= "<span class=\"disabled\"><img src=\"/corestatic/adminmedia/img/pagprev_disabled.png\" width=\"9\" height=\"13\" /></span>";
+			} else {
+				$op .= "<a href=\"".$uri."/page-".($this->pageno - 1).$qs."\" title=\"Previous page\"><img src=\"/corestatic/adminmedia/img/pagprev.png\" width=\"9\" height=\"13\" /></a>";
+			}
+			$low = ($this->pageno < 5) ? 1 : ($this->pageno - 4);
+			$high = (($low + 8) < $this->numpages) ? ($low + 8) : $this->numpages;
+			for ($i = $low; $i <= $high; $i++) {
+				if ($i == $this->pageno) {
+					$op .= "<span class=\"currentpage\">".$i."</span>";
+				} else {
+					$op .= "<a href=\"".$uri."/page-".$i.$qs."\">".$i."</a>";
+				}
+			}
+			if ($this->pageno == $this->numpages) {
+				$op .= "<span class=\"disabled\"><img src=\"/corestatic/adminmedia/img/pagnext_disabled.png\" width=\"9\" height=\"13\" /></span>";
+			} else {
+				$op .= "<a href=\"".$uri."/page-".($this->pageno + 1).$qs."\" title=\"Next page\"><img src=\"/corestatic/adminmedia/img/pagnext.png\" width=\"9\" height=\"13\" /></a>";
+			}
+			$op .= "</span><div class=\"clearall\"></div></div>";
+		}
+		return array("rightnav"=>$op);
+	}
+
+	public function disableAutomaticPaginationRestoration() {
+		if (!$this->_pagenuminurl) $this->pageno = 1;
+	}
+
+
+	/* Deprecated functions */
+
+	public function setPageNumSource($source, $ref) {}
+}
+
+if (!class_exists('Query')) class_alias('QueryV1', 'Query');

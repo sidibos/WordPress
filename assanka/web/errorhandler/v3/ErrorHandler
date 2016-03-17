@@ -1,0 +1,81 @@
+<?php
+/*
+########################################################
+Whenever a script could encounter an error (eg
+an invalid sql query) it should call "trigger_error(errorid)",
+where errorid should be an integer, but could be anything.  
+
+This class is now simply a wrapper for ErrorHandler v5,
+since the versions are feature-compatible, but v5 is static
+while v3 is instantiated.  So any instance of v3 now simply
+controls the static v5.   See Error handler v5 for full
+documentation.
+
+Note that this version of the errorhandler instantiates
+itself, and is expected to do so by apps that use it.
+########################################################
+*/
+
+
+
+/**
+ * TODO:RB:20120912: This file is still in use by at least the rankings-admin-trunk and the
+ * rankings-pubic-trunk projects.  Before deprecation, those projects need to be updated, or
+ * we need to support some form of per-project core for older projects before we upgrade them.
+ */
+
+
+
+
+
+
+class ErrorHandlerV3 {
+
+	function ErrorHandlerV3() {
+		ErrorHandlerV5::init();
+		
+		// Override the v5 reporterror, so that the v3 wrapper is called first
+		set_error_handler(array(&$this, 'reportError'));
+	}
+
+	function reportError($errno, $errstr, $errfile, $errline, $context) {
+	
+		/* Since this version of the error handler allows setting parameters directly, they may have been modified between instantiating the object and the error occuring.  Update them now */
+
+		// In errorhandler v3, verbosereport was equivilent to the current concept of 'devmode'
+		if (isset($this->verbosereport)) {
+			ErrorHandlerV5::setDevMode($this->verbosereport);
+			ErrorHandlerV5::useDefaultActionTriggers();
+		}
+		if (isset($this->logfiledir)) ErrorHandlerV5::setLogFileDir($this->logfiledir);
+		if (isset($this->summaryfile)) ErrorHandlerV5::setSummaryFilename($this->summaryfile);
+		if (isset($this->logtofile)) ErrorHandlerV5::setActionTriggers('log', $this->logtofile);
+		if (isset($this->stopandreport)) ErrorHandlerV5::setActionTriggers('stop', $this->stopandreport);
+		
+		return ErrorHandlerV5::reportError($errno, $errstr, $errfile, $errline, $context);
+	}
+
+	function abbreviate($data, $level=0) {
+		return ErrorHandlerV5::abbreviate($data, $level);		
+	}
+	
+	function generateTree($dumparr, $level=0) {
+		return ErrorHandlerV5::generateTree($dumparr, $level);
+	}
+	
+	function generatePlainBackTrace($data) {
+		return ErrorHandlerV5::generatePlainBackTrace($data);
+	}
+}
+
+if (!class_exists('ErrorHandler')) {
+	if (function_exists('class_alias')) {
+		class_alias('ErrorHandlerV3', 'ErrorHandler');
+	} else {
+		class ErrorHandler extends ErrorHandlerV3 { }
+	}
+}
+require_once($_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/errorhandler');
+
+$eh = new ErrorHandlerV3();
+?>

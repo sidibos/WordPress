@@ -1,0 +1,208 @@
+<?php
+/**
+ * Logger helper
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+
+require_once($_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/exception');
+require_once($_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/errorhandler');
+require_once($_SERVER['CORE_PATH'].'/helpers/common/v3/common');
+
+class AssankaLoggerV1 {
+	protected $_logname, $_reinitialise, $_writestring, $_writearray, $_instancevars;
+	private $_filehandle;
+
+	private $_logdir = '/var/log/apps';
+
+	/**
+	 * Creates a new Logger instance
+	 *
+	 * @param string $logname The name of this log, should be unique within the project (Used in the path of log files)
+	 * @return AssankaLoggerV1
+	 */
+	public function __construct($logname) {
+		$this->_logname = $logname;
+		$this->setLogMethod('stdout');
+		$this->setInstanceVariables();
+
+		// COMPLEX:LB:20120622: The pctnl module is only available when run from the command line, this is fine as SIGHUP signals shouldn't be sent to php proccesses running through Apache
+		if (function_exists("pcntl_signal")) {
+			declare(ticks = 1);
+
+			// Call the reinitialise method when a SIGHUP signal is received
+			pcntl_signal(SIGHUP, array($this, 'reinitialise'));
+		}
+	}
+
+	/**
+	 * Sets the method of logging used by the logger.
+	 *
+	 * Logging to file will log to: /var/log/apps/{logname}.log  where logname is the name of the log that you instantiate the logger class with.
+	 *
+	 * @param string $method Either 'file' or 'stdout'
+	 * @return void
+	 */
+	public function setLogMethod($method) {
+		unset($this->_reinitialise);
+		unset($this->_writestring);
+		unset($this->_writearray);
+
+		// Keep all logic that is specific to a certain log method inside this one switch statement.  This prevents having a switch statement in every function.
+		switch ($method) {
+			case 'file':
+				$filename = $this->_logdir."/{$this->_logname}.log";
+				$filehandle = null;
+				$fileinode = null;
+
+				// HACK:20120530:LB in PHP 5.4 $this will be accessible inside the closure, so no need to use $that
+				$that = $this;
+				$this->_writestring = function($string, $date = null) use ($filename, &$filehandle, &$fileinode, $that) {
+
+					// Make sure the file hasn't been deleted or moved
+					if (!isset($filehandle) or !is_file($filename) or fileinode($filename) != $fileinode) {
+						$that->reinitialise();
+
+						// If the filehandle still hasn't been set, then don't log anything.  (As it's better not to log than to kill whatever process is running)
+						if (!isset($filehandle)) return;
+					}
+
+					if ($date) {
+
+						// Record log using supplied date
+						$datetime = AssankaCommonV3::convertHumanTime($date, new DateTimeZone("UTC"));
+
+						// Don't use microsecond precision
+						$msec = 0;
+					} else {
+
+						// Record time as 'now', with microsecond precision
+						$time = microtime();
+						list($msec, $sec) = explode(' ', $time);
+						$datetime = new DateTime('@'.$sec, new DateTimeZone("UTC"));
+					}
+
+					// COMPLEX:GC:20120904: Splunk displays events in correct chronological order only if the timestamps are in the same format.
+					// Hence, always send a microseconds value, even if it is 000000 when $date is set
+					$success = @fwrite($filehandle, $datetime->format("Y-m-d\TH:i:s").".".str_pad(round($msec * 1000000), 6, '0', STR_PAD_LEFT)."Z ".$string."\n");
+					if (!$success) {
+						$error = error_get_last();
+						trigger_error("Unable to write to log file [{$error['message']}]", E_USER_NOTICE);
+					}
+				};
+				$this->_reinitialise = function() use ($filename, &$filehandle, &$fileinode) {
+					if (isset($filehandle)) fclose($filehandle);
+					AssankaCommonV3::createWritable($filename);
+					if ($filehandle = @fopen($filename, "a+")) {
+						$fileinode = fileinode($filename);
+					} else {
+						$error = error_get_last();
+						throw new AssankaException("Unable to open log file [{$error['message']}]", 0, null, get_defined_vars());
+					}
+				};
+				break;
+			case 'stdout':
+				$this->_writestring = function($string) {
+					print $string."\n";
+				};
+				break;
+			default:
+				throw new AssankaException("Unknown log method {$method}", 0, null, get_defined_vars());
+		}
+		$this->reinitialise();
+	}
+
+	/**
+	 * Reinitalises the logger if appropriate for the current log method
+	 *
+	 * @return void
+	 */
+	public function reinitialise() {
+		if (isset($this->_reinitialise) and is_callable($this->_reinitialise)) {
+			try {
+				call_user_func($this->_reinitialise);
+			} catch (AssankaException $e) {
+				ErrorHandlerV5::reportException($e, E_USER_NOTICE);
+			}
+		}
+	}
+
+	/**
+	 * Sets a list of variables which will be used for subsequent calls.  These variables will be output on all subsequent calls to write unless the key=>value is overridden in the write function.
+	 *
+	 * @param array $vars An array of key value pairs (or null to remove all existing instance variables)
+	 * @return void
+	 */
+	public function setInstanceVariables(array $vars = null) {
+		if ($vars) {
+			$this->_instancevars = array_merge($this->_instancevars, $vars);
+		} else {
+			$this->_instancevars = array();
+		}
+	}
+
+	/**
+	 * Writes some variables to the log.  The format of the variabels should be a key=>value array.  This is not a structure of any kind and can be used to simply log variables to the logger.  This will also include any instance variables that have been set by calling setInstanceVariables unless  they are overridden here.
+	 *
+	 * @param mixed $vars Ideally an array of variables to write to the log.  For backwards compatibility, this can also be a string.  However, using a string will result in instance variables not being added to the log.
+	 * @param mixed $date Optional date, or other time string which can be converted with Common::convertHumanTime
+	 * @return void
+	 */
+	public function write($vars, $date = null) {
+		if (is_array($vars)) $type = 'array';
+		elseif (is_string($vars) or (is_object($vars) and method_exists($vars, '__toString'))) $type = 'string';
+		else throw new AssankaException("Can only write strings or arrays to log.", 0, null, get_defined_vars());
+
+		// If the type is an array, then merge in any instance variables
+		if ($type == 'array') {
+			$vars = array_merge($this->_instancevars, $vars);
+		}
+
+		// If there is a function set for the appropriate type, then use it
+		if ($type == 'array' and isset($this->_writearray) and is_callable($this->_writearray)) {
+			return call_user_func($this->_writearray, $vars, $date);
+
+		} elseif ($type == 'string' and isset($this->_writestring) and is_callable($this->_writestring)) {
+			return call_user_func($this->_writestring, $vars, $date);
+
+		// If the type is array and the only function is _writestring, then convert the array to a string
+		} elseif ($type == 'array' and isset($this->_writestring) and is_callable($this->_writestring)) {
+			$string = "";
+			foreach ($vars as $key => $val) {
+				if (is_bool($val)) $val = ($val)?"true":"false";
+
+				// Make sure neither the key or val contains any spaces or colons as they are used as delimiters
+				$key = str_replace(' ', '_', str_replace(':', '_', $key));
+				$val = str_replace(' ', '_', str_replace(':', '_', $val));
+
+				if ($string) $string .= " ";
+				$string .= "{$key}:{$val}";
+			}
+			return call_user_func($this->_writestring, $string, $date);
+
+		// Strings may be in a variety of forms so there is no reliable way to convert them to an array, therefore throw an exception
+		} else {
+			throw new AssankaException("No function available to write to log.", 0, null, get_defined_vars());
+		}
+
+
+	}
+
+	/**
+	 * Only logs if an environment variable TRACE is set
+	 *
+	 * // REVIEW:LB:20130426: This functionality has been just added as an afterthought.  At some point we should consider the whole interface more carefully and possibly move to something PSR-3 compatible.
+	 *
+	 * The parameters are the same as for write:
+	 *
+	 * @param mixed $vars Ideally an array of variables to write to the log.  For backwards compatibility, this can also be a string.  However, using a string will result in instance variables not being added to the log.
+	 * @param mixed $date Optional date, or other time string which can be converted with Common::convertHumanTime
+	 * @return void
+	 */
+	public function trace($vars, $date = null) {
+		if (!getenv("TRACE")) return;
+		$this->write($vars, $date);
+	}
+
+}

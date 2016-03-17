@@ -1,0 +1,58 @@
+<?php
+require_once("../appglobal");
+
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+$request = $sdb->queryRow("SELECT title, client, project FROM requests WHERE {id}", $_GET);
+if (!$request) exit("Request not found");
+
+// Get permission levels before proceeding, to check whether the user has the authority to view this debug log
+$isdeveloper = $sdb->queryRow("SELECT isdeveloper FROM permissions WHERE userid=".$_SESSION["support"]["userid"]." AND ((client='".$request["client"]."' AND project='".$request["project"]."') OR (client='".$request["client"]."' AND project IS NULL) OR (client IS NULL AND project IS NULL)) ORDER BY (project IS NOT NULL AND client IS NOT NULL) DESC, (client IS NOT NULL) DESC LIMIT 1");
+
+if (!$isdeveloper) exit("Sorry, you do not have permission to view debug logs");
+
+// Load all debug logs
+$sdb->query("SELECT id, log, DATE_FORMAT(occurencedate, '%e %b %Y') formatteddate, UNIX_TIMESTAMP(occurencedate) as otime FROM debuglogs WHERE requestid=".$_GET["id"]." ORDER BY occurencedate");
+?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+	<title><?=$request["title"]?>: Debug logs</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<style type="text/css">
+	body { font-family: sans-serif; font-size: 11px; color: #666; line-height: normal; margin: 0; padding: 0 }
+	ol { float: left; width: 120px; margin: 0; padding: 5px; }
+	a.selected { font-weight: bold; text-decoration:none; color: black; cursor:default }
+	</style>
+	<script type="text/javascript">
+		function highlight(el) {
+			var links = document.getElementsByTagName('A');
+			for (var i=(links.length-1); i>=0; i--) {
+				links[i].className = ((links[i] == el) ? 'selected' : '');
+			}
+			el.blur();
+		}
+	</script>
+</head>
+<body>
+<?php
+if ($sdb->getNumResults()) {
+	echo "<ol>";
+	while($row = $sdb->getRow()) {
+		$class = (!empty($_GET["did"]) and $row["id"]==$_GET["did"]) ? 'selected' : '';
+		echo "<li><a onclick='highlight(this)' class='".$class."' target='logview' href='logview?id=".$row["id"]."'>#".$row["id"]." ".$row["formatteddate"]."</a></li>";
+	}
+	echo '</ol>';
+} else {
+	echo "There are no debug logs available for this request";
+}
+?>
+</body>
+</html>

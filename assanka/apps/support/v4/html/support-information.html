@@ -1,0 +1,30 @@
+<div style="background: rgb(190,209,255) url(lib/img/header.jpg) no-repeat; height:180px; border-bottom: 1px solid black;"></div>
+<h2>Getting the help you need</h2>
+<form id="supportcontactinfo" method="post" action="userupdate">
+<p><strong>When and how would you like to receive updates?</strong></p>
+<p>When we take action on a support request that affects you, how would you like to be notified of the update?</p>
+<table>
+<tr><td><input type="checkbox" name="sendemail" id="chksendemail" value="1"<!--@email|ischecked-->/></td><td><label for="chksendemail">Send an <strong>email</strong> to</label></td><td><input type="text" name="email" id="txtuseremail" value="<!--@email-->" title="Email address" /></td></tr>
+<tr><td></td><td style="padding-bottom:8px">for issues that are</td><td style="padding-bottom:8px"><select name="emailnotifylevel" id="selemailnotifylevel"><!--@emailnotifyopts--></select> or greater</td></tr>
+<tr><td><input type="checkbox" name="sendsms" id="chksendsms" value="1"<!--@mobile|ischecked-->/></td><td><label for="chksendsms">Send a <strong>text message</strong> to</label></td><td><input type="text" name="mobile" id="txtusermobile" value="<!--@mobile-->" title="Mobile number" /></td></tr>
+<tr><td></td><td>for issues that are</td><td><select name="smsnotifylevel" id="selsmsnotifylevel"><!--@smsnotifyopts--></select> or greater</td></tr>
+</table>
+<p><input type="submit" value="Save changes" /></p>
+<p>You can also subscribe to support request updates by RSS.  Look out for this button: <img src="/corestatic/imgs/feedicon/png/16x16.png" width="16" height="16" /></p>
+</form>
+<div class="form">
+<p>Requesting support from Assanka is simple, and we aim to resolve any faults as quickly and efficiently as possible.</p>
+<p>When submitting a support request, we'll ask you for some basic details which are explained in more detail on the form itself.  It is then entered into our support database with a status of <em><b>new</b></em>.  Within the period specified in your support agreement, an engineer will review your request, classify it, and assign it to someone who can deal with it.</p>
+<p>When the request is classified, it is usually assigned to a engineer at the same time.  The status is then changed to <em><strong>assigned</strong></em>.  The engineer will work on the issue until either we need information from you in order to continue, you ask us to stop, or the issue is concluded.</p>
+<p>If we need information from you in order to continue, a request may be placed in a <em><strong>awaiting client</strong></em> state.  If, in consultation with you, we decide to monitor the system for some time before taking action on the issue, or if a request is prioritised to a later development stage, it may be placed in a <em><strong>deferred</strong></em> state.</p>
+<p>When the issue is concluded, the engineer assigned to it will set the status to <em><strong>completed</strong></em> or <em><strong>scheduled for release</strong></em>, and enter a <em>resolution</em>, which will be one of:</p>
+<ul>
+<li><strong>Resolved</strong>: A problem was fixed.</li>
+<li><strong>Implemented</strong>: A change or new feature which did not constitute a fault was successfully implemented.</li>
+<li><strong>Duplicate</strong>: The issue had already been raised under a different support request.  In this case the engineer should make reference to the original request when closing the duplicate.</li>
+<li><strong>Advice given</strong>: The engineer issued advice to the client but took no action.</li>
+<li><strong>No action taken</strong>: Nothing was done, no advice given.</li>
+</ul>
+
+<p>Once a request is in the completed state, it is then reviewed, either by the author or by another engineer, and may be <em><strong>closed</strong></em> if the reviewer is in agreement with the engineer that actioned the request.  Closed requests are stored indefinitely as a record of the incident.</p>
+</div>

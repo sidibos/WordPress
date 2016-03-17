@@ -1,0 +1,504 @@
+<?php
+/**
+ * Daemon framework
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/exception');
+require_once($_SERVER['CORE_PATH'].'/helpers/common/v3/common');
+require_once($_SERVER['CORE_PATH'].'/helpers/logger/v1/logger');
+
+class DaemonV1 {
+
+	private $_pidfile, $_pid, $_status, $_protectedruntime, $_maxruntime, $_maxruntimecallback, $_helpdetails, $_startingdaemoninstances, $_name;
+	public $args, $logger;
+	const STATUS_PARENT = 1, STATUS_CHILD = 2;
+
+	/**
+	 * Creates a new Daemon instance
+	 *
+	 * @param string $name The name of the daemon, should be unique within the project (Used in the path of log files)
+	 * @return Daemon
+	 */
+	public function __construct($name=null) {
+
+		// Remove time limit - daemons must be able to run forever
+		set_time_limit(0);
+
+		// Increase memory allocation if it's under 256MB
+		$currentmem = ini_get('memory_limit');
+		if (preg_match("/^(\d+)([BKMG])$/", $currentmem, $m)) {
+			$multipliers = array('B' => 1, 'K' => 1024, 'M' => 1048576, 'G' => 1073741824);
+			$currentmem = $m[1] * $multipliers[$m[2]];
+		}
+		if ($currentmem < (256 * 1024 * 1024)) ini_set("memory_limit", "256M");
+
+		// Set default log and pid files
+		$tmp = $this->getTmpPath();
+		$this->_pidfile = $tmp."/daemon-".basename($_SERVER["SCRIPT_FILENAME"], '.php').".pid";
+		$this->_name = (empty($name)) ? basename($_SERVER["SCRIPT_FILENAME"], '.php') : $name;
+		$this->logger = new AssankaLoggerV1($this->_name);
+
+		$this->_status = self::STATUS_PARENT;
+		$this->_pid = posix_getpid();
+		$this->_protectedruntime = 0;
+		$this->_maxruntime = 0;
+		$this->_maxruntimecallback = null;
+		$this->parseArgs();
+
+		$this->handleSignal(SIGHUP, array($this, 'reinitialiseLogging'));
+	}
+
+	/**
+	 * Called when the process recieves a SIGHUP signal
+	 *
+	 * @return void
+	 */
+	public function reinitialiseLogging() {
+		$this->logger->reinitialise();
+	}
+
+	/**
+	 * Set maximum runtime
+	 *
+	 * Defines the maximum time, in seconds, for which the process is permitted to continue running after this method is called.  Note that time elapsed before this method is called does not count.
+	 *
+	 * NOTE: In order to use this method, you MUST state "declare(ticks=1)" at the top of your script.  Also, although it does not matter whether you call setMaxRuntime before or after detach(), the timeout will reset when detach() is called.
+	 *
+	 * @param integer $ttl      Number of seconds
+	 * @param closure $callback A PHP closure to be invoked when the runtime expires
+	 * @return void
+	 */
+	public function setMaxRuntime($ttl, $callback=null) {
+		$this->_maxruntime = $ttl;
+		$this->_maxruntimecallback = $callback;
+		$this->startMaxRuntimeTimer();
+	}
+
+	/**
+	 * Set protected runtime
+	 *
+	 * Defines the time, in seconds, for which an identical process may run before it is liable to be killed by this process detaching in 'replace' mode.  If a protected runtime is set, and detach is called where there is another identical daemon running that is younger than the specified number of seconds, the detach will allow the existing instance to continue running and the new instance will exit.
+	 *
+	 * If protected runtime is not set, any call to detach('replace') will kill any existing instance of the daemon, regardless of how long it has been running for.
+	 *
+	 * NOTE: If the daemon is called with the --stop or --restart arguments, all processess will be killed irrespective of their protected runtimes.
+	 *
+	 * @param integer $duration Number of seconds
+	 * @return void
+	 */
+	public function setProtectedRuntime($duration) {
+		$this->_protectedruntime = (integer)$duration;
+	}
+
+
+	/**
+	 * Set the file in which the daemon's process ID will be recorded.
+	 *
+	 * The daemon must record its process ID so that other instances of the daemon that are attempting to run will be able to discover this already-running instance, and avoid duplicating it
+	 *
+	 * @param string $file The file to which to write the process ID (full file path including filename)
+	 * @return void
+	 */
+	public function setPidFile($file) {
+		$this->_pidfile = $file;
+	}
+
+	/**
+	 * Set the file in which the daemon will record log output
+	 *
+	 * This file will be used to record any output logged using writeLog() if the daemon has been detached.  All log output generated before the daemon is detached will be sent to STDOUT (ie sinply echoed to the screen).  Daemons should use writeLog() or another logging mechanism for all output, and should not simply unconditionally echo output to STDOUT, since doing so while running as a detached child will end the process.  If there is a possibility that the daemon may be running as a detached child at the poitn where you want to log something, you should consider using writeLog to do it, and this method to set where that log output goes.
+	 *
+	 * @param string $file The file to which to write log output (full file path including filename)
+	 * @return void
+	 */
+	public function setLogFile($file) {
+		trigger_error('Log files are now handled by the logger helper', E_USER_DEPRECATED);
+	}
+
+	/**
+	 * Get the process's process ID
+	 *
+	 * Returns the process ID of the current process, regardless of whether the process has detached or not.  When the process detaches itself, its process ID will change.
+	 *
+	 * @return integer
+	 */
+	public function getPid() {
+		return $this->_pid;
+	}
+
+	/**
+	 * Register a callback for a signal handler
+	 *
+	 * @param integer $signame  Idenitifer for the signal to listen for.  Usually one of the constants SIGTERM, SIGHUP, SIGUSR1, SIGUSR2, SIGINT, SIGTSTP, SIGABRT, SIGCONT.  See http://www.php.net/manual/en/pcntl.constants.php for details
+	 * @param mixed   $callback Any flavour of PHP callback, as defined by http://www.php.net/callback
+	 * @return void
+	 */
+	public function handleSignal($signame, $callback) {
+		declare(ticks = 1);
+		pcntl_signal((int)$signame, $callback);
+	}
+
+	/**
+	 * Switch ownership of the process to the specified user
+	 *
+	 * Regardless of which user started the process, the specified user should take it over as if they has been the one to run it in the first place.  This is often useful to enable a daemon to be run by a highly priveleged user as part of a deployment process, but for the daemon to switch its ownership to a user with lesser priveleges as part of its initialisation.  This may be done before or after detaching the process, but is typically done before.
+	 *
+	 * @param string $user The UNIX user as whom to run the currently running process
+	 * @return void
+	 */
+	public function runAs($user) {
+		$userdetails = posix_getpwnam($user);
+		if (!isset($userdetails["uid"]) or $userdetails["uid"] == 0) {
+			throw new AssankaException("Unable to retreive details about the user", 0, null, $user);
+		}
+		if (posix_setuid($userdetails["uid"]) == false) {
+			throw new AssankaException("Unable switch to the specified user", 0, null, $user);
+		}
+		return true;
+	}
+
+	/**
+	 * Detach the process from the current user's shell
+	 *
+	 * Checks the PID file (see setPidFile) to ensure that another version of the same daemon is not already running.  Specify a parameter to control the behaviour if an existing process is found.   If detaching is allowed, the process will fork, and the parent will exit.  The child will gain a new process ID and will be independent of any shell.
+	 * Note: this is public for backwards compatibility only.  All new daemons should use autoDetach which automatically decides whether to detach or not
+	 *
+	 * @param string $mode         How to deal with any existing daemon process that is using the same pidFile.  'replace' to kill it, and use the current process instead.  'abort' or 'single' to abort the current process and error.  Default is single, which means that detach() will only succeed if there is not already an instance of thedaemon running.
+	 * @param int    $maxprocesses The maximum number of concurrent daemons of this type that should be allowed to run.  For unlimited, use -1.  (optional) Normally defaults to 1.  (For backwards compatibility if $mode is "multiple", $maxprocesses defaults to -1). NOTE: this number does not include any debug instances which run in the foreground.
+	 * @return void
+	 */
+	public function detach($mode = "single", $maxprocesses = null) {
+
+		// Set default $maxprocesses in a way which is backwards compatible
+		if ($maxprocesses === null) $maxprocesses = ($mode == "multiple") ? -1 : 1;
+
+		// Ensure this is not already a child process
+		if ($this->_status == self::STATUS_CHILD) {
+			throw new AssankaException("Cannot detach process, already detached");
+		}
+
+		// Check to see if there's other instances of this program running:
+		$prevpids = @file_get_contents($this->_pidfile);
+		$processes = array();
+
+		// Go through the previous pids and work out which are still running
+		foreach (explode("\n", $prevpids) as $prevpid) {
+			$prevpid = trim($prevpid);
+			if (!$prevpid or !posix_kill($prevpid, 0)) continue;
+			$processes[] = $prevpid;
+		}
+
+		// Check whether letting this process run would exceed maxprocesses
+		if (count($processes) + 1 > $maxprocesses) {
+
+			// If permitted, replace the first existing instance
+			if ($mode == "replace") {
+				$prevpid = array_shift($processes);
+
+				// If existing instance is within it's protected runtime, leave it alone
+				if ($this->_protectedruntime and filemtime($this->_pidfile) > (time() - $this->_protectedruntime)) {
+					exit;
+				} elseif (!posix_kill($prevpid, SIGTERM)) {
+					throw new AssankaException("Unable to kill existing process", 0, null, $prevpid);
+				}
+			} else {
+				throw new AssankaException("Duplicate instance already running", 0, null, $prevpid);
+			}
+		}
+
+		$this->setupFiles();
+		$processes[] = $this->fork();
+		if ($this->_status == self::STATUS_PARENT) {
+			file_put_contents($this->_pidfile, implode("\n", $processes)."\n");
+			exit();
+		}
+
+		// In the child process, set logging to file, as sending any output to STDOUT will make the daemon quit.
+		$this->logger->setLogMethod('file');
+	}
+
+	/**
+	 * Send output to a log file or the screen
+	 *
+	 * Record output to a log file or screen.  If the process is still attached to a shell, anything passed to this method is simply echoed to the screen.  If the process has detached, it will instead be written to the file specified by setLogFile.  Daemons should use writeLog() or another logging mechanism for all output, and should not simply unconditionally echo output to STDOUT, since doing so while running as a detached child will end the process.  If there is a possibility that the daemon may be running as a detached child at the point where you want to log something, you should consider using writeLog to do it, and setLogFile to set where that log output goes.
+	 *
+	 * @param mixed $data An array of data to log to file or display on screen as appropriate (for backwards compatibility this may be a preformatted string)
+	 * @return void
+	 */
+	public function writelog($data) {
+		$this->logger->write($data);
+	}
+
+
+	/**
+	 * Checks the relevant flags to see if a process should be detached
+	 * If --daemon is specified, the process is detached
+	 * If --debug is specified, the process is not detached
+	 * If neither, defaults to --debug on DEV, otherwise --dameon
+	 *
+	 * @param integer $maxdaemoninstances      The maximum number of concurrent daemons of this type that should be allowed to run.  Defaults to -1 (unlimited) NOTE: this number does not include any debug instances which run in the foreground.
+	 * @param boolean $replace                 Whether to kill existing daemons if there's too many.  Defaults to false (kill this process)
+	 * @param integer $startingdaemoninstances The number of concurrent daemons that sholud be run following a restart.  Defaults to $maxdaemoninstances (or 1 if $maxdaemoninstances is unlimited).  Cannot be higher than $maxdaemoninstances.
+	 *
+	 * @return boolean true if running in daemon mode, false if running in debug mode
+	 */
+	public function autoDetach($maxdaemoninstances = -1, $replace = false, $startingdaemoninstances = null) {
+		if ($startingdaemoninstances === null) {
+			$startingdaemoninstances = ($maxdaemoninstances > -1) ? $maxdaemoninstances : 1;
+		}
+		$this->_startingdaemoninstances = $startingdaemoninstances;
+		if (!empty($this->args['help'])) $this->showHelp();
+		$debug = !empty($this->args['debug']);
+		$daemon = !empty($this->args['daemon']);
+		unset($this->args['debug']);
+		unset($this->args['daemon']);
+		if (!$debug and !$daemon) {
+			if (empty($_SERVER['IS_DEV'])) $daemon = true;
+			else $debug = true;
+		}
+		if ($debug and $daemon) die("Cannot specify both --daemon and --debug.  Choose one.\n");
+
+		if (isset($this->args['stop']) or isset($this->args['restart'])) {
+
+			// Check to see if there's other instances of this program running:
+			$prevpids = @file_get_contents($this->_pidfile);
+
+			// Keep track of whether any proccesses have been sent the kill signal
+			$hasprev = false;
+			$failedkills = array();
+
+			// Go through the previous pids and kill them
+			foreach (explode("\n", $prevpids) as $prevpid) {
+				$prevpid = trim($prevpid);
+
+				// Ignore any pids which aren't running
+				if (!$prevpid or !posix_kill($prevpid, 0)) continue;
+
+				if (!$hasprev) {
+					$this->writelog("Stopping existing daemons...");
+				}
+
+				$hasprev = true;
+				if (posix_kill($prevpid, SIGTERM)) {
+					$this->writelog("Killed process {$prevpid}.");
+				} else {
+					$this->writelog("ERROR: Unable to kill existing process {$prevpid}.");
+					$failedkills [] = $prevpid;
+				}
+			}
+			if (!$hasprev) {
+				$this->writelog("No existing daemons to stop.");
+			}
+
+			// If any of the processes failed to die, trigger an error in the helpdesk
+			if (count($failedkills)) {
+				$errmessage = 'Failed to kill daemon process'.((count($failedkills) == 1) ? ' ' : 'es ')
+					.implode(', ', $failedkills);
+				trigger_error($errmessage, E_USER_NOTICE);
+			}
+			if (isset($this->args['stop'])) {
+				exit;
+			}
+
+			if ($maxdaemoninstances > -1 and $startingdaemoninstances > $maxdaemoninstances) {
+				trigger_error("Attempting to start more than the maxmimum number of daemon instances.", E_USER_NOTICE);
+				$startingdaemoninstances = $maxdaemoninstances;
+			}
+			if ($startingdaemoninstances < 1) {
+				$this->writelog("Not starting any new processes.");
+				exit;
+			}
+			$this->setupFiles();
+			$processes = array();
+			$this->writelog("Starting {$startingdaemoninstances} new process".(($startingdaemoninstances == 1)?'.':'es.'));
+			for ($i = 0; $i < $startingdaemoninstances; $i++) {
+				$processes[] = $this->fork();
+				if ($this->_status == self::STATUS_CHILD) {
+
+					// In the child process, set logging to file, as sending any output to STDOUT will make the daemon quit.
+					$this->logger->setLogMethod('file');
+					return true;
+				}
+			}
+			$this->writelog("Started ".implode(", ", $processes).".");
+			file_put_contents($this->_pidfile, implode("\n", $processes)."\n");
+			exit;
+		}
+
+
+		if ($daemon) {
+			$this->detach(($replace) ? 'replace' : 'abort', $maxdaemoninstances);
+			return true;
+		}
+		if ($debug) return false;
+	}
+
+	/**
+	 * Sets the details which are given when the dameon is called with a --help argument
+	 *
+	 * @param string $name        The name of the daemon
+	 * @param string $description A short (single line)  description of the daemon's function (optional)
+	 * @param mixed  $args        An explaination of the arguments the daemon accepts (not including those provided by this daemon class)  These can be provided in the following forms:
+	 * 		- Array or traversable object where the keys are the names of the arguments and the values are descriptions
+	 * 		- string of preformated argument names and descriptions
+	 * 		- callback which returns either of the above
+	 * @return void
+	 */
+	public function setHelp($name, $description=null, $args=null) {
+		$this->_helpdetails = array(
+			'name' => $name,
+			'description' => $description,
+			'args' => $args,
+		);
+	}
+
+	private function showHelp() {
+		$details = is_array($this->_helpdetails) ? $this->_helpdetails : array();
+		$name = empty($details['name']) ? "Daemon" : $details['name'];
+		$titleline = ucwords($name);
+		if (isset($details['description'])) $titleline .= ": ".$details['description'];
+		print $titleline."\n";
+		$argsets =
+		array(
+			"Standard Daemon Arguments" => array(
+				'daemon' => "Detaches process and runs in the background",
+				'debug' => "Run the process in the foreground",
+				'help' => "Lists valid arguments",
+				'stop' => "Kills all running instances of the {$name} (There is no '--start' argument, use --restart instead)",
+				'restart' => "Kills all running instances of the {$name} and starts {$this->_startingdaemoninstances} new instance".(($this->_startingdaemoninstances == 1) ? '' : 's'),
+			),
+		);
+		if (isset($details['args'])) {
+			$argsets["{$name} Arguments"] = $details['args'];
+		}
+		foreach ($argsets as $setname => $args) {
+			print "* ".ucwords($setname)." *\n";
+			if (is_callable($args)) {
+				$args = call_user_func($args);
+			}
+			if (is_array($args) or ($args instanceof Traversable)) {
+				foreach ($args as $name => $desc) {
+					if (empty($desc)) print "\t--{$name}\n";
+					else print "\t--{$name}\n\t\t{$desc}\n";
+				}
+			} elseif (is_string($args) or (is_object($args) and method_exists($args, '__toString'))) {
+				print "{$args}\n";
+			}
+		}
+		exit;
+	}
+
+	/**
+	 * Gets the arguments provided at the command line and parses them into key value pairs and populates $this->args array
+	 *
+	 * @return void
+	 */
+	private function parseArgs() {
+		if (!isset($_SERVER['argv']) or !is_array($_SERVER['argv'])) throw new AssankaException("argv not defined - daemons must run from the command line", 0, null, get_defined_vars());
+		$this->args = array();
+		$latestkey = null;
+
+		// Remove the first argument as it is the command name
+		$args = $_SERVER['argv'];
+		array_shift($args);
+		foreach ($args as $arg) {
+			$keyval = explode('=', $arg);
+			if (substr($keyval[0], 0, 2) == '--') {
+				$latestkey = substr($keyval[0], 2);
+				if (empty($keyval[1])) {
+					$this->args[$latestkey] = true;
+				} else {
+					$this->args[$latestkey] = $keyval[1];
+					$latestkey = null;
+				}
+			} else {
+				if ($latestkey) {
+					$this->args[$latestkey] = $arg;
+					$latestkey = null;
+				}
+				// NB: currently any values which aren't preceded by a --key are ignored.
+				// If support is required for these values, add an else statement here
+			}
+		}
+	}
+
+	/**
+	 * Make sure all the files used by the daemon are there and writable
+	 * (Log files are now handled by the logger helper)
+	 *
+	 * @return void
+	 */
+	private function setupFiles() {
+		foreach (array('PID file' => $this->_pidfile) as $name => $file) {
+			try {
+				AssankaCommonV3::createWritable($file);
+			} catch (Exception $e) {
+				throw new AssankaException("Cannot daemonize: $name is not writable", 0, null, $file);
+			}
+			if (strpos($file, $this->getTmpPath()) === 0) trigger_error("Please set $name location", E_USER_NOTICE);
+		}
+	}
+
+	/**
+	 * Forks the daemon into two processes, a parent and child
+	 *
+	 * @returns integer The pid of the newly forked child process.
+	 * @return void
+	 */
+	private function fork() {
+		$pid = pcntl_fork();
+		if ($pid == -1) {
+			throw new AssankaException("Could not fork");
+		} elseif ($pid) {
+			$this->_status = self::STATUS_PARENT;
+			return $pid;
+		} else {
+			$this->_status = self::STATUS_CHILD;
+
+			// PID is still set to the parent's PID.  Update it.
+			$this->_pid = posix_getpid();
+
+			// Close STDIN, OUT and ERR.  If a child process produces output, it will terminate the process
+			fclose(STDIN);
+			fclose(STDOUT);
+			fclose(STDERR);
+
+			// If max runtime is in effect, start the timer again
+			$this->startMaxRuntimeTimer();
+
+			// And change directory for safety:
+			chdir("/");
+
+			if (!posix_setsid()) {
+				throw new AssankaException("Unable to detach");
+			}
+			return $this->_pid;
+		}
+	}
+
+	private function startMaxRuntimeTimer() {
+		declare(ticks = 1);
+		if (!$this->_maxruntime) return;
+		$callback = $this->_maxruntimecallback;
+		pcntl_signal(SIGALRM, function() use($callback) {
+			if (!empty($callback)) $callback();
+			exit;
+		});
+		pcntl_alarm($this->_maxruntime);
+	}
+
+	private function getTmpPath() {
+		$attemptpaths = array();
+		$attemptpaths[] = "~/tmp";
+		$attemptpaths[] = "/tmp";
+		foreach ($attemptpaths as $path) {
+			if (is_dir($path)) return realpath($path);
+		}
+		throw new AssankaException("Unable to find tmp directory", 0, null, $attemptpaths);
+	}
+}
+
+if (!class_exists('Daemon')) class_alias('DaemonV1', 'Daemon');

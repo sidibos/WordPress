@@ -1,0 +1,73 @@
+<?php
+/**
+ * Column list
+ *
+ * Create a table of data displayed in columns of
+ * name/value pairs, designed to fit in the content
+ * well of an admin interface created with 
+ * AdminInterface
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// This error trigger added 25 Nov 2011
+trigger_error('Columnlist v1 is deprecated', E_USER_DEPRECATED);
+
+class Columnlist {
+
+	var $cols;
+	var $emptytext;
+	var $data;
+	var $title;
+	var $totallines;
+	var $RGX_EMAIL;
+	var $RGX_URL;
+
+	function __construct($title=false, $numcols, $emptytext) {
+		$this->title = $title;
+		$this->cols = $numcols;
+		$this->emptytext = $emptytext;
+		$this->data = array();
+		$this->totallines = 0;
+		$this->RGX_EMAIL = "/^[A-z0-9][\w\.\-\+]*@[A-z0-9][\w\-\.]+\.[A-z0-9]{2,6}$/i";
+		$this->RGX_URL = "/^http\:\/\/(([0-9]{1,3}\.){3}[0-9]{1,3}|([0-9a-z\-]+\.)+[a-z]{2,6})(\:[0-9]+)?/i";
+	}
+
+	function addItem($label, $value) {
+		$i = sizeof($this->data);
+		$this->data[$i]["label"] = str_replace(" ", "&nbsp;", $label);
+		$this->data[$i]["value"] = $value;
+		$this->data[$i]["lines"] = (substr_count($value, "\n") + 1);
+		$this->totallines += $this->data[$i]["lines"];
+	}
+
+	function output() {
+		$op = "";
+		if ($this->title) $op .= "<h4>".$this->title."</h4>";
+		$linespercol = ceil($this->totallines / $this->cols);
+		$linessofar = 0;
+		$currentcol = 1;
+		$op .= "<table cellspacing=\"0\" cellpadding=\"0\" width=\"100%\"><tr><td><table class=\"form\">";
+		foreach($this->data as $item) {
+			if ($item["label"] == "") {
+			} elseif (preg_match($this->RGX_EMAIL, $item["value"])) {
+				$item["value"] ="<a href=\"mailto:".$item["value"]."\">".$item["value"]."</a>";
+			} elseif (preg_match($this->RGX_URL, $item["value"])) {
+				$item["value"] ="<a href=\"".$item["value"]."\">".$item["value"]."</a>";
+			} elseif (!isset($item["value"]) or $item["value"] == "") {
+				$item["value"] = "<em>".$this->emptytext."</em>";
+			}
+			$item["value"] = nl2br($item["value"]);
+			if ($item["label"] == "") $op .= "<tr><td colspan=\"2\">".$item["value"]."</td></tr>";
+			else $op .= "<tr><td>".$item["label"].":&nbsp;</td><td>".$item["value"]."</td></tr>";
+			$linessofar += $item["lines"];
+			if ($linessofar >= ($linespercol*$currentcol)) {
+				$op .= "</table></td><td><table class=\"form\">";
+				$currentcol++;
+			}
+		}
+		$op .= "</table></td></tr></table>";
+		return $op;
+	}
+}
+?>

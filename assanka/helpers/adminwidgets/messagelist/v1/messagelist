@@ -1,0 +1,65 @@
+<?php
+/**
+ * Message list
+ *
+ * Create an HTML representation of a sequence of
+ * messages, designed to fit in the content well
+ * of an admin interface created with AdminInterface
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// This error trigger added 25 Nov 2011
+trigger_error('Messagelist v1 is deprecated', E_USER_DEPRECATED);
+
+class MessagelistV1 {
+	
+	var $title;
+	var $referencedate;
+	var $msgs;
+
+	function __construct($title=false, $referencedate=false) {
+		$this->timedifffunction = $timedifffunction;
+		$this->title = $title;
+		if (is_numeric($referencedate)) $this->referencedate = $referencedate;
+		$this->msgs = array();
+	}
+
+	function addMsg($author, $postdate, $msg, $altdateline = false,$filename = false,$fileurl = false) {
+		if ($filename and !$fileurl) trigger_error("You must supply a URL to go with the supplied filename",E_USER_ERROR);
+		$nextmsg = sizeof($this->msgs);
+		$this->msgs[$nextmsg]["author"] = $author;
+		$this->msgs[$nextmsg]["date"] = $postdate;
+		$this->msgs[$nextmsg]["msg"] = $msg;
+		$this->msgs[$nextmsg]["altdateline"] = $altdateline;
+		$this->msgs[$nextmsg]["filename"] = $filename;
+		$this->msgs[$nextmsg]["fileurl"] = $fileurl;
+	}
+
+	function output() {
+		$op = "";
+		if ($this->title) $op .= "<h4>".$this->title."</h4>";
+		foreach ($this->msgs as $msg) {
+			$op .= "<div class=\"supportmsg\">";
+			$op .= "<div class=\"metadata\">";
+			$op .= "<b>".$msg["author"]."</b>, ";
+			if ($msg["altdateline"]) {
+				$op .= $msg["altdateline"];
+			} else {
+				$op .= date((($_SERVER["PHPDATE"])?$_SERVER["PHPDATE"]:"j F Y")." ".(($_SERVER["PHPTIME"])?$_SERVER["PHPTIME"]:"H:i"), $msg["date"])." &nbsp; (".Common::timepaststring($msg["date"]);
+				if ($this->referencedate) $op .= ", T + ".Common::getTimeDifference($this->referencedate, $msg["date"]);
+				$op .= ")";
+			}
+			if ($msg["filename"]) {
+				$op .= "&nbsp;&nbsp;&nbsp;Attached file: <a href=\"".$msg["fileurl"]."\">".$msg["filename"]."</a>";
+			}
+			$op .= "</div>";
+			$msg["msg"] = nl2br(htmlspecialchars($msg["msg"]));
+			$op .= preg_replace("/\[(a|em|strong|code|kbd|blockquote|acronym)(.*)\](.*)\[\/(a|em|strong|code|kbd|blockquote|acronym)\]/iU", "<$1$2>$3</$4>", $msg["msg"]);
+			$op .= "</div>";
+		}
+		return $op;
+	}
+}
+
+if (!class_exists('Messagelist')) class_alias('MessagelistV1', 'Messagelist');

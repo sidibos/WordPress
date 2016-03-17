@@ -1,0 +1,60 @@
+<?php
+
+require_once("../appglobal");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+$frm = new Inputform("edituser");
+$grp = new Simplefieldgroup($frm);
+
+$grp->addField("username", array("label"=>"Username", "required"=>true, "validation"=>"/^[a-z]\w{2,}$/", "valdiationmsg"=>"Usernames must be at least 3 characters long and must not start with a number.", "helptext"=>"Enter a username for the new user, using only letters, numbers and the underscore character.  Usernames must be at least 3 characters long and must start with a letter"));
+$grp->addField("password", array("label"=>"Password", "required"=>true, "validation"=>"/^\S{4,}$/", "validationmsg"=>"Your password is too short", "helptext"=>"Enter a password.  It is a good idea to include numbers or punctuation in your password to make it more secure.  If you have trouble thinking of one, click the button for a suggestion."));
+$grp->addField("displayname", array("label"=>"Display name", "validation"=>"/\w+\s+\w+/", "validationmsg"=>"If you provide a display name, you must include at least two words, usually a firstname and a surname, eg 'John Smith'", "helptext"=>"Enter the real name of the user, to allow the system to address them correctly and attribute actions to them by name"));
+$grp->addField("email", array("label"=>"Email address", "validation"=>"email", "validationmsg"=>"Please enter a valid email address", "helptext"=>"By entering the email address of the user you will enable the system to send automatic alert messages to them when appropriate"));
+$grp->addField("sendpass", array("label"=>"Send password to user by email", "inputtype"=>"check"));
+
+$page->addAction("Save", array("javascript"=>"document.frmedituser.submit()"));
+$page->addAction("Cancel", "userman/");
+
+if ($_POST) {
+	$grp->addData($_POST);
+	$data = $grp->getSubmittedData();
+	if (is_array($auth->getDetailsForUser($data["username"])) or strtolower($data["username"])=="assanka") $grp->setInputInvalid("username", "That username is already in use");
+	if ($data['sendpass'] and !$data['email']) $grp->setInputInvalid('email', 'To send a password by email, you need to supply an email address');
+	if ($grp->checkValidity()) {
+		$auth->setPassword($data["username"], $data["password"]);
+		$dets = array();
+		if (!empty($data["displayname"])) $dets["displayname"] = $data["displayname"];
+		if (!empty($data["email"])) $dets["email"] = $data["email"];
+		if (sizeof($dets)) $auth->setDetails($dets, $data["username"]);
+		if ($data['sendpass'] and !empty($data['email'])) {
+			require_once($_SERVER['CORE_PATH']."/helpers/mail/v1/mail");
+			$url = ((!empty($_SERVER["HTTPS"])) ? "https":"http") . "://".$_SERVER["HTTP_HOST"].$page->getRoot();
+			$em = new Email();
+			$em->addRecipient($data['email']);
+			$em->setSubject('New account notification');
+			$em->setText("This is an automated notification to let you know that an account has been created for you for access to an Assanka-managed administration site.  The details, and the site to which they apply, are shown below:\n\nSite:          ".$url."\nUsername:      ".$data['username']."\nNew password:  ".$data['password']."\n\nYour email system is not a secure place to store passwords.  We recommend that you commit this password to memory, or store it in a more secure location, and delete this email.");
+			$em->setFrom('Assanka <noreply@assanka.net>');
+			$em->setBounceTo('noreply@assanka.net');
+			$em->send();
+			$page->alert("Password details have been sent to the user by email", "done");
+		}
+		$page->redirectAndAlert("User created succesfully.  Please set the new user's access rights and any additional preferences here", "done", "userman/view?id=".$data["username"]);
+	} else {
+		$page->alert("There was something wrong with your submission.  Please review the highlighted fields below", "error");
+	}
+} else {
+	$page->alert("Complete the form below to add a new user");
+}
+
+$page->add($frm->getOutput());
+
+$page->set("title", "Add/edit user");
+$page->outputHTML();
+?>

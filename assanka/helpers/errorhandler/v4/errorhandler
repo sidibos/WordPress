@@ -1,0 +1,61 @@
+<?php
+/**
+ * Assanka Error handler
+ *
+ * This class is now simply a wrapper for ErrorHandler v5, since the versions are feature-compatible, but v5 is static while v4 is instantiated.  So any instance of v4 now simply controls the static v5.   See Error handler v5 for full documentation.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+ 
+
+class ErrorHandlerV4 {
+
+	function ErrorHandlerV4() {
+		ErrorHandlerV5::init();
+
+		if (ErrorHandlerV5::isDevMode()) {
+			$this->logtofile = E_ALL | E_STRICT;
+			$this->stopandreport = E_ALL | E_STRICT;
+		} else {
+			$this->stopandreport = E_USER_ERROR | E_ERROR | E_WARNING;
+			$this->logtofile = E_ALL & (~E_NOTICE) & (~E_DEPRECATED);
+		}
+
+		// Override the v5 reporterror, so that the v4 wrapper is called first
+		set_error_handler(array(&$this, 'reportError'));
+	}
+
+	function reportError($errno, $errstr, $errfile, $errline, $context) {
+	
+		// Since this version of the error handler allows setting parameters directly, they may have been modified between instantiating the object and the error occuring.  Update them now
+		if (isset($this->verbosereport)) ErrorHandlerV5::setReportPageType(($this->verbosereport) ? ErrorHandlerV5::PAGE_TYPE_HTML : ErrorHandlerV5::PAGE_TYPE_TEXT);
+		if (isset($this->devmode)) {
+			ErrorHandlerV5::setDevMode($this->devmode);
+			ErrorHandlerV5::useDefaultActionTriggers($this->devmode);
+		}
+		if (isset($this->logfiledir)) ErrorHandlerV5::setLogFileDir($this->logfiledir);
+		if (isset($this->summaryfile)) ErrorHandlerV5::setSummaryFilename($this->summaryfile);
+		if (isset($this->logtofile)) ErrorHandlerV5::setActionTriggers('log', $this->logtofile);
+		if (isset($this->stopandreport)) ErrorHandlerV5::setActionTriggers('stop', $this->stopandreport);
+		if (isset($this->disptemplate)) ErrorHandlerV5::setTemplate('html', $this->disptemplate);
+
+		return ErrorHandlerV5::reportError($errno, $errstr, $errfile, $errline, $context);
+	}
+
+	function abbreviate($data, $level=0) {
+		return ErrorHandlerV5::abbreviate($data, $level);		
+	}
+	
+	function generateTree($dumparr, $level=0) {
+		return ErrorHandlerV5::generateTree($dumparr, $level);
+	}
+	
+	function generatePlainBackTrace($data) {
+		return ErrorHandlerV5::generatePlainBackTrace($data);
+	}
+}
+
+if (!class_exists('ErrorHandler')) class_alias('ErrorHandlerV4', 'ErrorHandler');
+
+require_once(dirname(__FILE__).'/../v5/errorhandler');
+

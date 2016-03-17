@@ -1,0 +1,18 @@
+<!--@title|prepend:"<h4>",append:"</h4>"-->
+<!--@BLOCK:blkmsg|repeatfor:msgs-->
+	<div class="supportmsg <!--@classname-->" id="msglistmsg<!--@i-->">
+		<div class="metadata"><b><!--@author--></b>, <!--@dateline-->
+		<!--@BLOCK:blkstddate|printifnotset:dateline-->
+			<acronym title="<!--@date|dateformat:"j F Y H:i"-->"><!--@date|timepast--></acronym><!--@elapsed|timestring,prepend:", T + "-->
+		<!--@ENDBLOCK:blkstddate-->
+		<!--@BLOCK:blkfile|printifset:filename-->
+			&nbsp;&nbsp;&nbsp;Attached file: <a href="<!--@fileurl-->"><!--@filename--></a>
+		<!--@ENDBLOCK:blkfile-->
+		<!--@actions-->
+		</div>
+		<div class="msgcontent">
+		<!--@msg|encode_html,nl2br,render_bbcode,autolink-->
+		<!--@attachments-->
+		</div>
+	</div>
+<!--@ENDBLOCK:blkmsg-->

@@ -1,0 +1,51 @@
+<?php
+
+require_once("../appglobal");
+
+
+
+// This file is deprecated, and should no longer be in use.  This error designed to catch cases where it is still being used.
+trigger_error('Deprecated code in use', E_USER_DEPRECATED);
+
+
+
+
+if (empty($_GET["id"])) $page->redirectAndAlert("User not specified");
+$user = $auth->getDetailsForUser($_GET["id"]);
+if ($user===false) $page->redirectAndAlert("User not found");
+$userrights = $auth->getRightsForUser($_GET["id"]);
+
+$page->set("username", $_GET["id"]);
+$page->set("displayname", ((!empty($user["displayname"])) ? $user["displayname"] : $_GET["id"]));
+$page->set("userdetails", buildUserDataTree($user));
+$page->set("rights", $userrights);
+
+$sections = $page->getSections();
+foreach($sections as $namespace=>$name) {
+	$page->add("rightssections", array("path"=>$page->getRoot()."/".$namespace, "name"=>$name));
+}
+
+if ($auth->checkRights("users.changepass", false)) $page->addAction("Change password", "userman/changepass?id=".$_GET["id"]);
+if ($auth->checkRights("users.delete", false)) $page->addAction("Delete user", array("href"=>"userman/delete", "domid"=>"delete", "data"=>array("id"=>$_GET["id"]), "javascript"=>"return confirm('Are you sure you want to delete this user?')"));
+
+// Construct the page elements and output the page
+$page->add("content", $page->render("../lib/tem/viewuser"));
+$page->set("title", "View user");
+$page->outputHTML();
+
+function buildUserDataTree($data, $prefix="") {
+	global $page;
+	$op = "<ul>";
+	foreach ($data as $key=>$val) {
+		$op .= "<li><span class='wrapper'><span class='key' title='".$prefix.$key."'>".$key."</span>";
+		if (is_array($val)) {
+			$op .= "</span>".buildUserDataTree($val, $prefix.$key.".")."</li>";
+		} elseif ($val !== null and $val !== false) {
+			$op .= ": <span class='val'>".$val."</span></span></li>";
+		}
+	}
+	$op .= "</ul>";
+	return $op;
+}
+	
+?>

@@ -1,0 +1,12 @@
+{
+	"rights": {
+		"outline": {
+			"name": "Everything",
+			"components": {
+				"user": "Content editing",
+				"administrator": "Permissions management"
+			}
+		}
+	},
+	"settings": {}
+}
