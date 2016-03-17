@@ -7,7 +7,7 @@
  */
 
 //set CORE_PATH for heroku
-if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
+if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/coreftco';
 
 require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 
