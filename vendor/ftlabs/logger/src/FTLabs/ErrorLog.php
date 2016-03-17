@@ -451,7 +451,7 @@ class ErrorLog {
 		$shortmsg = ($a = strpos($errstr, "occured in query")) ? substr($errstr, 0, $a) : $errstr;
 		$shortmsg = preg_replace("/\[\<.*\>\]/U", "", $shortmsg);
 		$shortmsg = preg_replace_callback("/\([^()]{30,300}\)/u", function($m){
-			if (mb_strlen($m[0]) > 50) {
+			if (\mb_strlen($m[0]) > 50) {
 				return mb_substr($m[0], 0, 20).'…'.mb_substr($m[0], -25);
 			}
 			return '('.mb_substr($m[0], -25);
