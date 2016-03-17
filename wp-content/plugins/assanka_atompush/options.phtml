@@ -1,0 +1,101 @@
+<div class="wrap">
+	<div id="icon-options-general" class="icon32"><br></div>
+	<h2>Atom Push Settings</h2>
+	<form method="post" action="options.php">
+		<?php wp_nonce_field('update-options'); ?>
+		<input type="hidden" name="action" value="update" />
+		<input type="hidden" name="page_options" value="wpatompush_destination_urls, wpatompush_error_email, wpatompush_selected_categories" />
+
+		<h3 class="title">Notification URLs</h3>
+		<p>Add each notification URL on a separate line.</p>
+		<textarea name="wpatompush_destination_urls" rows="3" class="large-text code"><?php echo get_option('wpatompush_destination_urls'); ?></textarea>
+		
+		<h3 class="title">Alerts</h3>
+		<table class="form-table">
+			<tr valign="top">
+				<th scope="row"><label for="wpatompush_error_email">Email address for alerts</label></th>
+				<td>
+					<input type="text" name="wpatompush_error_email" id="wpatompush_error_email" value="<?php echo esc_attr(Assanka_Atompush::get_error_email()); ?>" class="regular-text">
+					<span class="description">This address will be emailed automatically if a notification URL cannot be reached for more than two days.</span>
+				</td>
+			</tr>
+		</table>
+		
+		<h3 class="title">Atom-Push Settings for Posts</h3>
+		<h4>Below:</h4>
+		<ul style="list-style: disc; margin-left: 7em; margin-top:-2.9em;">
+			<li><strong>Selected categories</strong> have their posts atom-pushed by default.</li>
+			<li><strong>Un-selected categories</strong> never have their posts atom-pushed.</li>
+		</ul>
+
+		<p><span class="description">When posts in the categories selected below are published, "atom push" sends them to the FT.com search engine to be included in their search results. You can choose to disable this for individual posts.</span></p>
+
+		<table class="wp-list-table widefat fixed tags" cellspacing="0">
+			<thead>
+				<tr>
+					<th scope="col" id="cb" class="manage-column column-cb" style="width:7em; text-align:center;">Atom Push</th>
+					<th scope="col" id="name" class="manage-column column-name desc" style=""><span>Name</span></th>
+					<th scope="col" id="description" class="manage-column column-description desc" style=""><span>Description</span></th>
+					<th scope="col" id="slug" class="manage-column column-slug desc" style=""><span>Slug</span></th>
+				</tr>
+			</thead>
+			<tfoot>
+				<tr>
+					<th colspan="4" class="manage-column column-cb check-column" style="">&nbsp;</th>
+				</tr>
+			</tfoot>
+			<tbody id="the-list" class="list:tag">
+				<?php $category_list = Assanka_Atompush::get_category_defaults(); $row_toggle = null; ?>
+				
+				<?php foreach ($category_list as $category): ?>
+			
+				<tr id="tag-<?php echo $category->term_id; ?>" class="<?php echo $row_toggle = $row_toggle != 'alternate' ? 'alternate' : null; ?>">
+					<th scope="row" class="column" style="text-align:center;"><input type="checkbox" name="wpatompush_selected_categories[]" id="checkbox-<?php echo $category->term_id; ?>" value="<?php echo $category->term_id; ?>" <?php echo $category->atom_push_selected ? 'checked="checked"' : null; ?>></th>
+					<td class="name column-name"><label for="checkbox-<?php echo $category->term_id; ?>"><strong><?php echo $category->name; ?></strong></label></td>
+					<td class="description column-description"><?php echo $category->description; ?></td>
+					<td class="slug column-slug"><?php echo $category->slug; ?></td>
+				</tr>
+				
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+		<p><span class="description">Note: Posts that are syndicated from other sources are already included in FT.com search results, so they're never atom-pushed, regardless of which category they're in.</span></p>
+
+		<p class="submit">
+			<input type="submit" class="button-primary" value="<?php _e('Save Changes') ?>" />
+		</p>
+	</form>
+
+	<div class="widefat" style="display: table; border-spacing: 6px 0;">
+		<div id="icon-options-general" class="icon32"><br></div>
+		<form method="post" action="">
+			<div style="display: table-cell; width: 30%;">
+				<h2>Atom-Push all posts</h2>
+				<p>
+					<input type="checkbox" name="atom-push-all-posts" id="atom-push-all-posts" />
+					<label for="atom-push-all-posts">Atom-push every single post in this blog.</label>
+				</p>
+				<p>
+					Offset <input class="small-text" type="text" name="atom-push-all-posts-offset" />
+					<span class="description">(skip the first [offset] posts)</span>
+					<br/>
+					Limit <input class="small-text" type="text" name="atom-push-all-posts-limit" />
+					<span class="description">(only atom-push [limit] posts)</span>
+				</p>
+				<p class="submit">
+					<input onclick="jQuery('.seriously').css('color','red');" type="submit" class="button-primary" value="<?php _e('Submit') ?>" />
+				</p>
+			</div>
+			<div style="display: table-cell;">
+				<h4>Warning: For FT Labs Use Only</h4>
+				<ul style="list-style: disc; margin-left: 2em;">
+					<li>If you proceed, every single post in this blog will be atom-pushed to all destinations.</li>
+					<li class="seriously">This process can take a long time. Don't close the window while it's loading.</li>
+					<li>If you get a time-out error, use the Offset and Limit inputs to pick up where it left off.</li>
+					<li>The idea is that all destinations have deleted all records of this blog's posts, and they need to be re-populated.</li>
+					<li>There's no way to send new DELETE messages for old deleted blog posts, so if the destination <em>thinks</em> there are live posts, but they've been deleted on this side, <em>they won't know any different.</em></li>
+				</ul>
+			</div>
+		</form>
+	</div>
+</div>
