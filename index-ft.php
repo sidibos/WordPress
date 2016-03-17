@@ -5,6 +5,7 @@
  * @codingstandard ftlabs-phpcs
  * @copyright The Financial Times Limited [All rights reserved]
  */
+
 //set CORE_PATH for heroku
 if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
 
