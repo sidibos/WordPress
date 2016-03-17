@@ -1,0 +1,23 @@
+<?php
+/**
+ * Receives files uploaded from the Java screenshot tool
+ */
+
+require_once $_SERVER["CORE_PATH"]."/helpers/common/v2/common";
+
+$path = $_SERVER['DOCUMENT_ROOT'].$_GET['uploaddest'];
+if (!is_dir($path)) mkdir($path, 0777, true);
+
+$filename = Common::uniqueFilename($path, "imagecapture_".date('YmdHis') . ".jpg");
+$data = file_get_contents("php://input");
+$json = json_decode($data,true);
+$binary_data = base64_decode($json['image_data']);
+if (!$binary_data) {
+	$filename = null;
+	$size = 0;
+} else {
+	file_put_contents($path."/".$filename,$binary_data);
+	$size = filesize($path."/".$filename);
+}
+header("Content-Type: text/plain");
+echo json_encode(array("filename"=>$filename, "size"=>$size));

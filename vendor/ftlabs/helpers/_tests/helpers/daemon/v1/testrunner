@@ -1,0 +1,104 @@
+#!/usr/bin/php
+<?php
+
+// Include class under test
+require_once($_SERVER['CORE_PATH'] . '/helpers/daemon/v1/daemon');
+declare(ticks = 1);
+$logfile = "/tmp/daemontest/logfile.log";
+$pidfile = "/tmp/daemontest/pidfile.log";
+
+switch($_SERVER['argv'][1]) {
+
+	case 'dummy':
+		$d = new Daemon();
+		$d->setPidFile($pidfile);
+		$d->detach('replace');
+		sleep(60);
+	break;
+
+	case 'maxRuntime':
+		$d = new Daemon();
+		$d->setMaxRuntime(2, function() {
+			echo "OK\n";
+		});
+		sleep(6);
+		echo "FAIL\n";
+	break;
+
+	case 'maxRuntimeBeforeDetach':
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->setMaxRuntime(2, function() use($d) {
+			$d->writeLog('maxRuntimeBeforeDetach OK');
+		});
+		$d->detach();
+		sleep(6);
+		$d->writeLog('maxRuntimeBeforeDetach FAIL');
+	break;
+
+	case 'maxRuntimeAfterDetach':
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->detach();
+		$d->setMaxRuntime(2, function() use($d) {
+			$d->writeLog('maxRuntimeAfterDetach OK');
+		});
+		sleep(6);
+		$d->writeLog('maxRuntimeAfterDetach FAIL');
+	break;
+
+	case 'loggingToStdOutputBeforeDetach':
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->writeLog('loggingToStdOutputBeforeDetach OK');
+	break;
+
+	case 'loggingToFileAfterDetach':
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->detach();
+		$d->writeLog('loggingToFileAfterDetach OK');
+	break;
+
+	case 'protectedRuntimeExit':
+		shell_exec('./testrunner dummy');
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->setProtectedRuntime(60);
+		$d->detach('replace');
+		$d->writeLog('protectedRuntimeExit FAIL');
+	break;
+
+	case 'protectedRuntimeReplace':
+		shell_exec('./testrunner dummy');
+		sleep(10);
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->setProtectedRuntime(5);
+		$d->detach('replace');
+		$d->writeLog('protectedRuntimeReplace OK');
+	break;
+
+	case 'logRotation':
+		shell_exec('./testrunner logRotationChild');
+		sleep(3);
+		unlink($logfile);
+	break;
+
+	case 'logRotationChild':
+		$d = new Daemon();
+		$d->setLogFile($logfile);
+		$d->setPidFile($pidfile);
+		$d->detach();
+		for ($i=0; $i<10; $i++) {
+			$d->writeLog('logRotationChild ' . $i);
+			sleep(1);
+		}
+	break;
+}

@@ -18,6 +18,10 @@
  * @package WordPress
  */
 
+// Assanka change: Initialise the FT environment
+require_once ($_SERVER['DOCUMENT_ROOT'] . '/index-ft.php');
+// End Assanka change
+
 /** Define ABSPATH as this file's directory */
 define( 'ABSPATH', dirname(__FILE__) . '/' );
 

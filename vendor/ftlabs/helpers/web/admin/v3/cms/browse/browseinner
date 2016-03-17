@@ -1,0 +1,112 @@
+<?php
+/**
+ * Works with browse to provide an interface for selecting items in
+ * the CMS hierarchy.
+ *
+ * Accepted Inputs: (GET)	type - type of action, used for warning
+ * text. Eg move, new (GET)	tag - tag of the current item, used to
+ * display and highlight it
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once($_SERVER["CORE_PATH"]."/web/admin/v3/cms/cmslib");
+
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+
+// Config **todo** - get and set the language
+session_start();
+$languageisocode = "en";
+$formats = $db->query("SELECT dateformat, timeformat FROM out_languages WHERE isocode='".$languageisocode."'");
+$formatsrow = $db->fetchrow($formats);
+$dateFormat = $formatsrow["dateformat"];
+$timeFormat = $formatsrow["timeformat"];
+
+// Proceed to set up the page and lay out common javascript, as well
+// as some styles required only on this page.
+?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" style="border: 0;">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<title>Outline Browser</title>
+<script type="text/javascript" src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/js/outline"></script>
+<script type="text/javascript">
+	oltree = new OutlineTreeView('<?=((isset($_SESSION["outlinehostname"]) && $_SESSION["outlinehostname"])?$_SESSION["outlinehostname"]:$_SERVER['HTTP_HOST'])?>', '', false, 'page');
+	oltree.changemode("browse", "<?=$_GET["type"]?>", "<?=$_GET["extra"]?>");
+</script>
+<link rel="stylesheet" type="text/css" href="/core/admin/v3/css/outline" />
+</head>
+<body style="background-color: rgb(240,240,240); font-family: sans-serif; font-size: 12px; border: 0;">
+<?php
+
+$result = $db->query("SELECT id, name, webroot FROM out_sites ORDER BY id ASC");
+$_SESSION["outlinebrowsesiteid"] = false;
+	$sitesOptionList = "";
+while ($row = $db->fetchrow($result)) {
+	if (!$_SESSION["outlinebrowsesiteid"]) $_SESSION["outlinebrowsesiteid"] = $row["id"];
+	if ($_GET["siteid"] == $row["id"]) $_SESSION["outlinebrowsesiteid"] = $row["id"];
+	if ($row["id"] == $_SESSION["outlinebrowsesiteid"]) echo ("<script>parent.selectedSite = '".$row["id"]."'; parent.selectedSiteName = '".$row["name"]."'; parent.selectedSiteRoot = '".$row["webroot"]."';</script>");
+	$sitesOptionList .= "<option value=\"".$row["id"]."\"".(($_SESSION["outlinebrowsesiteid"] == $row["id"])?" selected=\"selected\"":"").">".$row["name"]."</option>";
+}
+	
+if ($db->numresults($result) > 1) {
+	echo str_replace(array("--sitesOptionList--", "--formaction--"), array($sitesOptionList, "browseinner"), $page->loadExternalContent($_SERVER["CORE_PATH"]."/web/admin/v3/cms/html/multisitebar"));
+}
+
+// Check for the presence of a home page in the table **todo** - languages??
+$result = $db->query("SELECT out_localcontent.id, out_versions.id AS versionid, out_items.id AS itemid, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as datecreated, authoruser, draftuser, cfg_adminusers.name AS author, islive FROM out_items LEFT JOIN out_localcontent ON out_items.id = out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id = out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser WHERE tag='homepage' AND (islive=1".(($_GET["type"] == "link")?" OR draftuser IS NOT NULL":"").") AND siteid='".$_SESSION["outlinebrowsesiteid"]."' AND languageisocode='".$languageisocode."' ORDER BY islive DESC, draftuser!='".$db->sqlenc($_SESSION["outlineadmin"])."' ASC, datecreated ASC");
+
+// If a home page is present, output it as an editable page
+if ($db->numresults($result)) {
+	$row = $db->fetchrow($result);
+	
+	if ($_GET["type"] == "link") {
+	
+		// Grab any drafts
+		$drafts = "";
+		$originalversionid = $row["versionid"];
+		while ($drow = $db->fetchrow($result)) {
+			$drafts .= getDraftHTML($originalversionid, $drow["versionid"], $drow["draftuser"], $drow["authoruser"], $drow["author"], false);
+		}
+		$iseditable = ($row["draftuser"] or ($row["visibility"]=="inaccessible"))?false:true;
+	} else if ($_GET["type"] == "permissions") {
+		$drafts = false;
+		$iseditable = true;
+	} else {
+		$drafts = false;
+		if ($_GET["extra"] and (strpos("/".$row["tag"]."/", $_GET["extra"]."/") !== false)) {
+			$iseditable = false;
+		} else {
+			$iseditable = ((cmsCheckIfAuth("editpage", "homepage", false, false, $_SESSION["outlinebrowsesiteid"]))?true:false);
+		}
+	}
+	$homepageid = $row["itemid"];
+	echo getTreeViewRow($row["id"], ($row["title"])?$row["title"]:"Home Page", "homepage", $row["author"], $row["datecreated"], $iseditable, true, false, false, false, true, "visible", $drafts, true);
+	
+// If no home page is present in the tables, create a non-editable
+// home page as a top-level folder
+} else {
+	if ($_GET["type"] == "link") $iseditable = true;
+	else $iseditable = ((cmsCheckIfAuth("editpage", "homepage", false, false, $_SESSION["outlinebrowsesiteid"]))?true:false);
+	echo getTreeViewRow("0", ($row["title"])?$row["title"]:"Home Page", "homepage", $row["author"], $row["datecreated"], $iseditable, true, false, false, false, true, "visible", $drafts, true);
+	$homepageid = false;
+}
+
+// Ensure the homepage is selected if applicable
+if ($_GET["tag"] == "/" or $_GET["tag"] == "homepage" or $_GET["tag"] == "/homepage" or $_GET["tag"] == "/homepage/") {
+	echo("<script type=\"text/javascript\">oltree.selectrow(false, '".(($db->numresults($result))?$row["id"]:0)."', '".(($row["title"])?$row["title"]:addslashes("Home Page"))."', 'homepage', ".(($iseditable)?"true":"false").", false, false, '', '', true);</script>");
+}
+
+// Fetch all pages for which the home page is a parent; this calls
+// a recursive function to generate the folder tree.
+echo outlineGetChildren("(parentid IS NULL OR parentid=0".(($homepageid)?" OR parentid=".$homepageid:"").") AND tag!='homepage'", 1, $languageisocode, $dateFormat, $timeFormat, $_SESSION["outlinebrowsesiteid"], false, false, true);
+
+?>
+<div id="waitholder" style="display: none;">
+<div class="treepad" style="clear: both;">&nbsp;</div>
+<div class="treepad"><img src="/lib/inc/loadcore/web/admin/v2/img/icons/icon_wait.gif" height=14 width=19 /></div><span class="ctext hidden">Loading folder, please wait...</span>
+</div><br /><br />
+</body>
+</html>

@@ -1,0 +1,27 @@
+#!/usr/local/bin/php
+<?php
+/**
+ * A daemon which allows a set number of multiple instances
+ *
+ * The daemon specifies various config options regard how many daemons to run
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+require_once $_SERVER['CORE_PATH'].'/helpers/daemon/v2/daemon';
+
+$outputfile = dirname(__FILE__)."/daemonoutput";
+
+if (file_exists($outputfile)) {
+	unlink($outputfile);
+
+}
+$fh = fopen($outputfile, 'a');
+
+$daemon = new DaemonV2(array(
+	'maxinstances' => 6,
+	'startingdaemoninstances' => 4,
+));
+
+fwrite($fh, posix_getpid()."\n");
+fclose($fh);

@@ -1,0 +1,67 @@
+<?php
+/**
+ * Deletes a page from the database, along with its history
+ *
+ * Accepted Inputs: (GET) id: out_localcontent.id of page to delete
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once("cmslib");
+
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+
+if (!is_numeric($_GET["id"])) {
+	header("Location: index");
+	exit;
+}
+$result = $db->query("SELECT itemid, tag FROM out_localcontent WHERE id=".$_GET["id"]);
+if (!mysql_num_rows($result)) {
+	header("Location: index");
+	exit;
+}
+$rec = $db->fetchrow($result);
+
+// Grab the item type and use it to determine whether the user has
+// the rights to delete this item
+$result = $db->query("SELECT type, siteid FROM out_items WHERE id=".$rec["itemid"]);
+$row = $db->fetchrow($result);
+cmsCheckIfAuth("delete".$row["type"], (($row["type"]=="page")?$rec["tag"]:""), "", true, $row["siteid"]); 
+
+// Store the parent folder in the user's preferences if there is one
+if (strrpos($rec["tag"], "/")) saveLastSelectedPage(substr($rec["tag"], 0, strrpos($rec["tag"], "/")));
+else saveLastSelectedPage("/");
+
+// Proceed with the deletion
+$db->query("DELETE FROM out_items WHERE id=".$rec["itemid"]);
+$result = $db->query("SELECT id, tag, languageisocode FROM out_localcontent WHERE itemid=".$rec["itemid"]);
+while ($rec = $db->fetchrow($result)) {
+
+	// First, remove the versions, adding actionlog lines for each
+	$result2 = $db->query("SELECT id FROM out_versions WHERE localcontentid=".$rec["id"]);
+	while ($rec2 = $db->fetchrow($result2)) {
+		$db->query("INSERT INTO out_actionlog SET versionid=".$rec2["id"].", user='".$authuser."', actiontype='delete', comment='', date=NOW()");
+	}
+	$db->query("DELETE FROM out_versions WHERE localcontentid=".$rec["id"]);
+	
+	// Delete the localcontent
+	$db->query("DELETE FROM out_localcontent WHERE id=".$rec["id"]);
+	
+}
+
+// Delete the cache, if any - site-wide as navigation may be affected
+outlineDeleteCache($row["siteid"]);
+
+// Other actions to occur on delete page
+$extendarray = array($rec);
+extendCMS("afterPageDelete", $extendarray);
+
+if ($row["type"] == "asset" or mysql_affected_rows()) {
+	$page->alert("Item deleted successfully.", "done");
+	if ($row["type"] == "asset") header("Location: assets");
+	else header("Location: index");
+} else {
+	trigger_error("Unexpected result", E_USER_ERROR);
+}
+?>

@@ -1,0 +1,25 @@
+This is some sample content to check that the "printiflast" block modifier is working correctly.
+
+<!--@BLOCK:singleitem|repeatfor:singleitem-->
+	This is a singly output block.
+	<!--@BLOCK:checklast|iflast-->This should be output as it's the only "iteration".<!--@ENDBLOCK:checklast-->
+<!--@ENDBLOCK:singleitem-->
+
+<!--@BLOCK:listblock|repeatfor:listitems-->
+	This is a loop-output block, iteration <!--@value-->.
+	<!--@BLOCK:checklast|iflast-->
+		This should only be output for the final iteration.
+	<!--@ENDBLOCK:checklast-->
+<!--@ENDBLOCK:listblock-->
+
+<!--@BLOCK:nestouter-->
+	And once more within another block, also using printiflast syntax instead of iflast:
+	<!--@BLOCK:listblock|repeatfor:listitems-->
+		This is a loop-output block, iteration <!--@value-->.
+		<!--@BLOCK:checklast|printiflast-->
+			This should only be output for the final iteration.
+		<!--@ENDBLOCK:checklast-->
+	<!--@ENDBLOCK:listblock-->
+<!--@ENDBLOCK:nestouter-->
+
+All done.

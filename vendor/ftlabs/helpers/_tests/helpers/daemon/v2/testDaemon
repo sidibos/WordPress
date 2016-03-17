@@ -1,0 +1,29 @@
+#!/usr/local/bin/php
+<?php
+/**
+ * A script which uses the v2 daemon class for use by daemonTest
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+require_once $_SERVER['CORE_PATH'].'/helpers/daemon/v2/daemon';
+
+$output = array();
+$output['startpid'] = posix_getpid();
+
+$daemon = new DaemonV2(array(
+	'args' => array(
+		'foo' => "Used without a value",
+		'bar' => "Used with a value",
+		'notused' => "This is declared but never actually used",
+	),
+	'name' => "philip daemon",
+	'description' => "This is a mock daemon for testing with",
+));
+
+$output['endpid'] = posix_getpid();
+
+$output['CLIArgs'] = $daemon->getCLIArgs();
+
+
+file_put_contents(dirname(__FILE__)."/daemonoutput", json_encode($output));

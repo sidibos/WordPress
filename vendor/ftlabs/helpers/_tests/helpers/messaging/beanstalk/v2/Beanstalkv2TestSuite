@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * Beanstalk v2 Test Suite
+ *
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+class Beanstalkv2TestSuite extends PHPUnit_Framework_TestSuite {
+
+	public static function suite() {
+        $suite = new Beanstalkv2TestSuite();
+
+		$dir = dirname(__FILE__);
+
+		$suite->addTestFiles(array(
+			$dir.'/beanstalkTest'
+		));
+
+		return $suite;
+    }
+
+    protected function setUp() {
+    }
+
+    protected function tearDown() {
+    }
+}

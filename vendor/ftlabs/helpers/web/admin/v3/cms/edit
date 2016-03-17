@@ -1,0 +1,657 @@
+<?php
+/**
+ * CMS edit page - collects the data required to complete an edit of
+ * the page - title, tag and content. Content is collected via the
+ * fckeditor rich text component.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once($_SERVER["CORE_PATH"]."/web/common/v1/formatteddifference");
+require_once("cmslib");
+
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+
+if (!is_numeric($_REQUEST["id"]) or ($_REQUEST["localcontentid"] && !is_numeric($_REQUEST["localcontentid"]))) {
+	$page->alert("You tried to edit a page, but no id was supplied, or the id was not numeric.  The ID should always be filled in automatically if you followed a link from another page; if you believe you are seeing this in error, please contact support.", "error");
+	header("Location: index");
+	exit;
+}
+
+// Load up the record to be edited by using the previous versions.  If the page is a draft, load the draft version directly; otherwise, load the
+// "live" version for the page id.
+if ($_REQUEST["type"] == "draft") {
+	$rec = $db->queryRow("SELECT visibility, type, webroot, siteid, itemid, parentid, localcontentid AS id, v.id AS versionid, languageisocode, tag, title, authoruser, html, v.datecreated, a.name AS authorname, s.name AS sitename, hostname, versionnumber".$cmsExtend["editRowFields"]." FROM out_localcontent l LEFT JOIN out_versions v ON l.id=v.localcontentid LEFT JOIN out_items i ON l.itemid = i.id LEFT JOIN cfg_adminusers a ON v.authoruser = a.htaccessuser LEFT JOIN out_sites s ON i.siteid=s.id WHERE v.id=".$_REQUEST["id"]." AND (draftuser='".$authuser."' OR (authoruser='".$authuser."' AND ISNULL(draftuser))".$cmsExtend["editRowTerms"].")");
+} else {
+	$rec = $db->queryRow("SELECT visibility, type, webroot, siteid, itemid, parentid, localcontentid AS id, v.id AS versionid, languageisocode, tag, title, authoruser, html, s.name AS sitename, hostname".$cmsExtend["editRowFields"]." FROM out_localcontent l LEFT JOIN out_versions v ON l.id=v.localcontentid LEFT JOIN out_items i ON l.itemid = i.id LEFT JOIN out_sites s ON i.siteid=s.id WHERE l.id=".$_REQUEST["id"]." AND islive=1".$cmsExtend["editRowTerms"]."");
+}
+if (!$rec) {
+	if ($_REQUEST["type"] == "draft") $idcheck = $db->querySingle("SELECT localcontentid FROM out_versions WHERE id=".$_REQUEST["id"]);
+	else $idcheck = $db->querySingle("SELECT itemid FROM out_localcontent WHERE id=".$_REQUEST["id"]);
+	if ($idcheck) $page->alert("You do not have permission to edit the page requested.  This may be because you already sent the draft to another user, requested a draft currently belonging to another user, or because you do not have permission to work in this area of the site.  If you feel this is an error, please contact support.", "error");
+	else $page->alert("The page you requested to edit has been deleted or could not be found.", "error");
+	header("Location: index");
+	exit;
+}
+
+// Check how many sites there are, and pull out the name of the current site
+// if there's several
+$siteName = false;
+$result = $db->query("SELECT id, name, hostname FROM out_sites");
+if ($db->numresults($result) > 1) {
+	while ($theRow = $db->fetchrow($result)) {
+		if (($_POST and ($theRow["id"] == $_POST["siteid"])) or (!$_POST and ($theRow["id"] == $rec["siteid"]))) {
+			$siteName = $theRow["name"];
+			$_SESSION["outlinesiteid"] = $theRow["id"];
+			$_SESSION["outlinehostname"] = $theRow["hostname"];
+		}
+	}
+}
+
+// Check whether this is the only draft of this page, used later in link display
+$result = $db->query("SELECT id FROM out_versions WHERE localcontentid=".$rec["id"]." AND id != ".$rec["versionid"]);
+if (mysql_num_rows($result) || ($_REQUEST["type"] != "draft")) $displayLink = true;
+else $displayLink = false;
+
+// Ensure this user has the right to be editing the page, and store if they are a publisher
+cmsCheckIfAuth("edit".$rec["type"], $rec["tag"], $authuser, true, $rec["siteid"]);
+$userIsPublisher = cmsCheckIfAuth("publish".$rec["type"], $rec["tag"], $authuser, false, $rec["siteid"]);
+
+// Save the location of this page for redisplay of index
+saveLastSelectedPage($rec["tag"]);
+
+// Import some CSS and javascript
+$page->addContent("content", "<style type=\"text/css\">@import url(\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/css/outline\");</style>");
+$page->addContent("content", "<script type=\"text/javascript\" src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/js/outline\"></script>");
+
+// Pad any assets with a wrapper div to allow inline assets
+if ($rec["type"] == "asset") {
+	if (!strlen($rec["html"])) $rec["html"] = "&nbsp; &nbsp;";
+	$rec["html"] = "<div class=\"temporaryasseteditwrapper\">".$rec["html"]."</div>";
+}
+
+// Replace any inline linked assets with the asset placeholder
+if (strpos($rec["html"], "linkedasset-id") !== false) {
+	while(preg_match("/<\!\-\-([\/]?)linkedasset\-id([\d]+)\-\->/i", $rec["html"], $matches)) {
+		$assetid = $matches[2];
+					
+		$assettitle = $db->querySingle("SELECT title FROM out_localcontent l LEFT JOIN out_versions v ON l.id=v.localcontentid AND v.islive=1 WHERE l.id='".$db->sqlenc($assetid)."'");
+		if ($assettitle) {
+			$assetmarker = '<img src="'.$_SERVER["CORE_WEB_ALIAS"].'/admin/v3/img/assetmarker.png" class="linkedasset'.$assetid.'" style="';
+			$assetmarker .= 'border: 0; margin: 0; padding: 0; float: none; display: inline; width: 78px; height: 12px; vertical-align: middle; ';
+			$assetmarker .= '" title="'.$assettitle.'" alt="'.$assettitle.'" />';
+		} else {
+			$assetmarker = "";
+		}
+		
+		$rec["html"] = updateAssets($assetid, $rec["html"], $assetmarker);
+		$rec["html"] = preg_replace("/<\!\-\-([\/]?)linkedasset\-id".$assetid."\-\->/i", "", $rec["html"]);
+	}
+}
+
+// Convert some data for use with the draft tag/vis/section changes
+$rec["draftjsconfirmvars"] = "";
+$tagbits = explode("/", $rec["tag"]);
+$rec["draftjsconfirmvars"] .= "'".array_pop($tagbits)."', ";
+if (count($tagbits)) $rec["draftjsconfirmvars"] .= "'".implode("/", $tagbits)."', ";
+else $rec["draftjsconfirmvars"] .= "'', ";
+$rec["draftjsconfirmvars"] .= "'".$rec["siteid"]."', '".$rec["visibility"]."'";
+
+// Create a new form to be used with loaded or submitted data
+$form = new inputform("editpage", "POST", "edit");
+
+$group1 = new simplefieldgroup(&$form);
+
+// Add standard fields to the form
+$group1->addText("title", "Title", "t", true, false, 150);
+if (($rec["tag"] == "homepage") || ($rec["type"] != "page")) {
+	$group1->addHidden("tag", $rec["tag"]);
+} else {
+	$group1->addHidden("parenttag");
+	if ($userIsPublisher) $group1->addText("parenttagvis", "Section", false, false, false, 250);
+	if ($userIsPublisher and $siteName) $group1->addText("sitename", "Site", false, false, false, 200);
+	
+	// TODO:RB:20070724: This should really be done by a) making field groups editable once they're created, and b) passing the field group by reference to a CMS-altering function.  But FELE requires now, so...
+	if (!$cmsExtend["tagMaxLength"]) $cmsExtend["tagMaxLength"] = 30;
+	if (!$cmsExtend["tagValidationRegex"]) $cmsExtend["tagValidationRegex"] = "/^[a-z0-9\-]+$/";
+	if ($userIsPublisher) $group1->addText("tag", "Tag", "a", true, $cmsExtend["tagValidationRegex"], $cmsExtend["tagMaxLength"]);
+}
+$group1->addHidden("siteid", $rec["siteid"]);
+$group1->addHidden("id", $_REQUEST["id"]);
+$group1->addHidden("localcontentid", $rec["id"]);
+$group1->addHidden("type", $_REQUEST["type"]);
+$group1->addHidden("reviewuser");
+$group1->addHidden("comment");
+$group1->addHidden("email");
+$group1->addHidden("submitaction");
+
+if ($rec["type"] == "page" and $userIsPublisher) $group1->addSelect("visibility", "Visibility", "v", true, array("visible"=>"Visible", "hidden"=>"Accessible, but not shown in the navigation", "inaccessible"=>"Fully hidden"), false);
+
+// Outline extension: allow additional fields or data to be added
+// to the fieldgroup before the editor is output
+$extendarray = array(&$rec, &$_POST, &$group1);
+extendCMS("editScreenAppendFields", $extendarray);
+
+// Set up content to drop into the fck editor instantiation
+outlineCheckPermissions();
+$rec["html"] = (($_POST["Editor"])?$_POST["Editor"]:$rec["html"]);
+
+// Encode opening and closing tags to prevent HTML comment/script tag issues
+$rec["html"] = Common::jsentities($rec["html"]);
+
+$contentdetails = array("--publiclink--"=>"http://".$rec["hostname"]."/".$rec["webroot"]."/".(($rec["visibility"] && ($rec["visibility"] != "inaccessible") && $displayLink)?$rec["tag"]:""), "--contentvalue--"=>$rec["html"], "--assetsenabled--"=>((cmsIsFunctionalityEnabled("assets"))?"true":"false"), "--webalias--"=>$_SERVER["CORE_WEB_ALIAS"], "--httphost--"=>$_SERVER["HTTP_HOST"]);
+
+// Select the assets to add to the array
+$contentdetails["--assetarray--"] = "oFCKeditor.Config.AssetArray = new Array();";
+$allAssets = $db->query("SELECT title, l.id FROM out_items i LEFT JOIN out_localcontent l ON i.id=l.itemid LEFT JOIN out_versions v ON l.id=v.localcontentid WHERE type='asset' AND languageisocode='".$rec["languageisocode"]."' AND islive=1");
+while ($theAssetRow = $db->fetchrow($allAssets)) {
+	$contentdetails["--assetarray--"] .= "oFCKeditor.Config.AssetArray[oFCKeditor.Config.AssetArray.length] = \"".$theAssetRow["title"]."\";";
+	$contentdetails["--assetarray--"] .= "oFCKeditor.Config.AssetArray[oFCKeditor.Config.AssetArray.length] = \"".$theAssetRow["id"]."\";";
+}
+
+$group1->addContent(str_replace(array_keys($contentdetails), array_values($contentdetails), $page->loadExternalContent("html/editor")));
+
+// Define help text
+if ($rec["type"] == "asset") $form->addHelptext("title", "Enter a title that describes the asset.");
+else $form->addHelptext("title", "Enter a title that describes the page, preferably briefly, so that when presented to the user in a large font size it will not need to wrap.  It is best to stick to fewer than ten words, and even fewer if the title is used in the site navigation.");
+$form->addHelptext("tag", "Enter a page tag which is used to create a URL for the page - the address that must be typed into the browser to load the page.  This must be unique to the page, and should reflect its content, but at the same time be as short as possible.  Avoid any punctuation, spaces, numbers or uppercase characters which will make the link harder to type, and keep the tag lowercase.  'contact', 'findingus', 'whoweare' are all good tags.");
+$form->addHelptext("parenttagvis", "Enter the part of the site this page should be created in, using the \"Browse...\" button and selecting a page or folder.  This page will then be grouped inside the selected folder for the purposes of linking to the page or displaying it in site navigation.");
+$form->addHelptext("visibility", "Alter this to control the page's visibility to a normal visitor. 'Visible' makes the page available to everybody; 'Accessible' doesn't display the page in any navigation systems, but does allow the page to be linked to or visited directly, while 'Hidden' means the page isn't accessible at all.");
+
+// Outline extension: allow additional data (eg help fields) to be added to the form
+$extendarray = array(&$rec, &$_POST, &$form);
+extendCMS("editScreenAlterForm", $extendarray);
+
+// Add action buttons
+if ($userIsPublisher) $page->addAction("submit", ((($rec["visibility"] == "visible" or $rec["visibility"] == "hidden") and ($rec["type"] == "page"))?"Publish":"Save"), false, "document.getElementById('frmeditpage_submitaction').value='publish'; document.frmeditpage.submit()");
+if (cmsIsFunctionalityEnabled("drafts")) $page->addAction("draftsubmit", (($_REQUEST["type"] == "draft")?"Save Draft":"Save As Draft"), false, "document.getElementById('frmeditpage_submitaction').value='savedraft'; if (outlineConfirmPageDraft(".$rec["draftjsconfirmvars"].")) document.frmeditpage.submit()");
+if (cmsIsFunctionalityEnabled("multipleusers")) addReviewPaneAndAction(&$page, $rec, $authuser);
+if ($_REQUEST["type"] == "draft") {
+
+	// Prevent deletion of the draft if this draft is the only version of this page and has any children
+	if ($db->querySingle("SELECT COUNT(*) FROM out_versions WHERE localcontentid=".$rec["id"]) == 1
+		and $db->querySingle("SELECT COUNT(id) FROM out_items WHERE parentid=".$rec["itemid"]))
+	{
+		$page->addAction("draftdelete", "Delete Draft", false, "alert('You cannot delete this draft as it has other pages contained within it.  Delete or move those pages before deleting this draft.');");
+	} else {
+		$page->addAction("draftdelete", "Delete Draft", false, "if (confirm('Are you sure you want to delete this draft?')) { document.getElementById('frmeditpage_submitaction').value='deletedraft'; document.frmeditpage.submit() }");
+	}
+}
+$page->addAction("cancel", "Cancel", "index", "return confirm('Exit page editor: are you sure?  All your changes will be discarded.');");
+if (cmsIsFunctionalityEnabled("versiondiff") and ($_REQUEST["type"] == "draft") and $displayLink) $page->addAction("viewdiff", "View Changes", "viewdiff", "return confirm('This will discard all changes you have made to the page without saving; are you sure you wish to proceed?')", array("fileforcomp1"=>$_REQUEST["id"], "fileforcomp2special"=>"previous"));
+
+if ($_POST) {
+
+	// Proceed with draft deletions before form validation if required
+	if (($_POST["type"] == "draft") and ($_POST["submitaction"] == "deletedraft")) {
+
+		if ($db->querySingle("SELECT COUNT(*) FROM out_versions WHERE localcontentid=".$rec["id"]) == 1
+			and $db->querySingle("SELECT COUNT(id) FROM out_items WHERE parentid=".$rec["itemid"]))
+		{
+			$page->alert("That draft cannot be deleted as it contains other pages.  Please delete or move those pages first.", "error");
+			header("Location: index");
+			exit;
+		}
+				
+		// Deletion of the draft depends on whether the page only exists
+		// as a draft; if it does, delete the itemid etc.
+		$checkID = $db->querySingle("SELECT localcontentid FROM out_versions WHERE out_versions.id=".$_POST["id"]);
+		$result = $db->query("SELECT id FROM out_versions WHERE localcontentid=".$checkID);
+		if ($db->numresults($result) == 1) {
+			$itemID = $db->querySingle("SELECT itemid FROM out_localcontent WHERE id=".$checkID);
+			$db->query("DELETE FROM out_items WHERE id=".$itemID);
+			$db->query("DELETE FROM out_localcontent WHERE id=".$checkID);
+			$db->query("DELETE FROM out_versions WHERE id=".$_POST["id"]);
+		} else {
+			$db->query("DELETE FROM out_versions WHERE out_versions.id=".$_POST["id"]);
+		}
+		$page->alert("Draft deleted.", "done");
+		if ($rec["type"] == "asset") header("Location: assets");
+		else header("Location: index");
+		exit;
+	}
+
+	// The visible parent tag isn't submitted, so restore it
+	if ($_POST["parenttag"] and ($_POST["parenttag"] != "/")) $_POST["parenttagvis"] = $_POST["parenttag"]."/";
+	if ($siteName) $_POST["sitename"] = $siteName;
+
+	// if a parent has been specified, check the tag
+	if ($_POST["parenttag"]) {
+		$row = $db->queryRow("SELECT tag, itemid FROM out_localcontent l LEFT JOIN out_items i ON l.itemid=i.id WHERE tag='".$db->sqlenc($_POST["parenttag"])."' AND languageisocode='".$db->sqlenc($rec["languageisocode"])."' AND siteid='".$db->sqlenc($_POST["siteid"])."'");
+		if (!$row) trigger_error("Error checking tag from parent page", E_USER_ERROR);
+	}
+	
+	// With the tag constructed, check the user has permission to create the item in that location
+	if (!cmsCheckIfAuth("createpage", (($_POST["parenttag"])?$_POST["parenttag"]."/":"").$_POST["tag"], $authuser, false, $_POST["siteid"])) $group1->makeInputInvalid("parenttagvis", "You do not have permission to move a page into the folder selected.");
+	
+	// Check that tag is not already in use on this site
+	if (($rec["type"] == "page") and $db->querySingle("SELECT l.id FROM out_items i LEFT JOIN out_localcontent l ON i.id=l.itemid WHERE l.tag='".(($_POST["parenttag"])?$_POST["parenttag"]."/":"").$_POST["tag"]."' AND i.siteid='".$_POST["siteid"]."' AND l.languageisocode='".$rec["languageisocode"]."' AND l.id != '".$_POST["localcontentid"]."'")) {
+		$group1->makeInputInvalid("tag", "The tag name you gave is already in use for a page in this section and site - you need to specify a unique tag for each page in any given section so that every page has a different URL.");
+	}
+
+	$group1->addData($_POST);
+
+	// Outline extension: validate form data prior to a save
+	$extendArray = array(&$rec, &$_POST, &$group1);
+	extendCMS("editSaveValidate", $extendArray);
+
+	if ($group1->inputValid()) {
+	
+		// Outline extension: process any data at the start of a save
+		$extendArray = array(&$rec, &$_POST);
+		extendCMS("editSaveStart", $extendArray);
+		
+		// If this is an asset and the temporary wrapper to allow "inline" content is still present, restore the content by removing the wrapper
+		if (($rec["type"] == "asset") and strpos($_POST["Editor"], "temporaryasseteditwrapper")) {
+			$_POST["Editor"] = restoreAssetHTML($_POST["Editor"]);
+		}
+		
+		// Linked asset tags may have their attribute orders shuffled by FCK at random.  We also no longer need many of the attributes, so reduce to
+		// a src tag and a class tag (containing the asset):
+		$_POST["Editor"] = preg_replace('/<img([^>]*?)\s*src="([^"]+)assetmarker\.png"([^>]*?)\/>/i', '<img src="$2assetmarker.png" $1 $3 />', $_POST["Editor"]);
+		$_POST["Editor"] = preg_replace('/<img\s*src="([^"]+)assetmarker\.png"([^>]*?)\s*class="linkedasset([\d]+)"([^>]*?)\/>/i', "<linkedassetmarker-id$3/>", $_POST["Editor"]);
+	
+		// Process any linked assets detected, a much easier process than in v2
+		while (preg_match('/<linkedassetmarker\-id([\d]+)\/>/i', $_POST["Editor"], $matches)) {
+			$assetid = $matches[1];
+			
+			$theAsset = $db->querySingle("SELECT html FROM out_versions WHERE localcontentid='".$db->sqlenc($assetid)."' AND islive=1");
+			// TODO: languages of asset insertion...?
+			
+			// If the asset has been found, swap all instances of the linked asset marker with the asset content
+			// surrounded by HTML comment tags (for easy identification when re-loading)
+			if ($theAsset) {
+				$_POST["Editor"] = str_replace("<linkedassetmarker-id".$assetid."/>", "<!--linkedasset-id".$assetid."-->".$theAsset."<!--/linkedasset-id".$assetid."-->", $_POST["Editor"]);
+	
+			// If the asset hasn't been found, it may have been deleted and not correctly cleaned up, or may have been inserted manually;
+			// in either case remove the invalid marker.
+			} else {
+				$_POST["Editor"] = str_replace("<linkedassetmarker-id".$assetid."/>", "", $_POST["Editor"]);
+			}
+		}
+	
+		// If asset being published, update all html containing items,
+		// and flush the cache for those items
+		if (($rec["type"] == "asset") && $userIsPublisher && ($_POST["submitaction"] == "publish")) {
+			$assetRecords = $db->query("SELECT v.id AS id, languageisocode, tag, html, siteid FROM out_localcontent l LEFT JOIN out_versions v ON l.id=v.localcontentid LEFT JOIN out_items i ON l.itemid=i.id WHERE html LIKE '%<!--linkedasset-id".$rec["id"]."-->%'");
+			$sitestouncache = array();
+			while($theAssetRow = $db->fetchrow($assetRecords)) {
+				$newString = updateAssets($rec["id"], $theAssetRow["html"], $_POST["Editor"]);
+				$db->query("UPDATE out_versions SET html='".$db->sqlenc($newString)."' WHERE id='".$theAssetRow["id"]."'");
+				$sitestouncache[$theAssetRow["siteid"]] = $theAssetRow["siteid"];
+			}
+			foreach ($sitestouncache as $uncachesiteid) {
+				outlineDeleteCache($uncachesiteid);
+			}
+		}
+	
+		// Update visibility of the item and flush cache if necessary.  Chance of
+		// page having changed site so flush entire cache
+		if (($rec["type"] == "page") and ($rec["visibility"] != $_POST["visibility"])) {
+			if ($_POST["submitaction"] == "publish") $db->query("UPDATE out_items SET visibility='".(($_POST["visibility"])?$db->sqlenc($_POST["visibility"]):"inaccessible")."' WHERE id=".$rec["itemid"]);
+			if ($_POST["siteid"]) outlineDeleteCache($_POST["siteid"]);
+			else outlineDeleteCache();
+		
+		// Also flush the cache if publishing a draft, as this changes the nav.
+		} else if (($_POST["type"] == "draft") and ($_POST["submitaction"] == "publish")) {
+			outlineDeleteCache($_POST["siteid"]);
+		}
+	
+		// Modify the tag of the localised content if necessary,
+		// and update any children as well as flushing the cache
+		if ($_POST["submitaction"] == "publish") {
+			if (($rec["tag"] != "homepage") and (($rec["siteid"] != $_POST["siteid"]) or ($rec["tag"] != (($_POST["parenttag"])?$_POST["parenttag"]."/":"").$_POST["tag"]))) {
+				
+				// Firstly update the parentid of the parent item if necessary
+				// Use a special case for parent of homepage
+				if ($_POST["parenttag"] == "homepage" or !$_POST["parenttag"]) {
+					$homepageid = $db->querySingle("SELECT i.id FROM out_items i LEFT JOIN out_localcontent l ON i.id=l.itemid WHERE i.siteid='".$db->sqlenc($_POST["siteid"])."' AND tag='homepage'");
+					if ($homepageid) $db->query("UPDATE out_items SET parentid=".$homepageid." WHERE id='".$rec["itemid"]."'");
+					else $db->query("UPDATE out_items SET parentid=0 WHERE id='".$rec["itemid"]."'");
+					$_POST["parenttag"] = "";
+				} else if ($_POST["parenttag"]) {
+					$parentid = $db->querySingle("SELECT itemid FROM out_localcontent l LEFT JOIN out_items i ON l.itemid=i.id WHERE tag='".$db->sqlenc($_POST["parenttag"])."' AND siteid='".$db->sqlenc($_POST["siteid"])."'");
+					$db->query("UPDATE out_items SET parentid=".$parentid." WHERE id='".$rec["itemid"]."'");
+					$_POST["parenttag"] = $_POST["parenttag"]."/";
+				}
+							
+				// Secondly, update the tags where necessary
+				$db->query("UPDATE out_localcontent SET tag='".$db->sqlenc($_POST["parenttag"].$_POST["tag"])."' WHERE out_localcontent.id=".$_POST["id"]);
+				$result = $db->query("SELECT l.id, tag FROM out_localcontent l LEFT JOIN out_items i ON l.itemid=i.id WHERE siteid=".$rec["siteid"]." AND tag LIKE '".$db->sqlenc($rec["tag"])."/%'");
+				while ($oldtagrow = $db->fetchrow($result)) {
+					$db->query("UPDATE out_localcontent SET tag='".$db->sqlenc($_POST["parenttag"].$_POST["tag"]).substr($oldtagrow["tag"], strlen($rec["tag"]))."' WHERE id=".$oldtagrow["id"]); 
+				}
+				
+				// Next update any links within the CMS pointing to the old location.  Once for ", once for '.
+				if ($_POST["tag"] and $rec["tag"]) {
+					$webroot = $db->querySingle("SELECT webroot FROM out_sites WHERE id=".$rec["siteid"]);
+					$db->query("UPDATE out_versions SET html = REPLACE(html, 'href=\"/".$rec["webroot"]."/".$db->sqlenc($rec["tag"])."', 'href=\"/".$webroot."/".$db->sqlenc($_POST["parenttag"]).$db->sqlenc($_POST["tag"])."') WHERE html LIKE '%href=\"/".$rec["webroot"]."/".$db->sqlenc($rec["tag"])."%'");
+					$db->query("UPDATE out_versions SET html = REPLACE(html, 'href=\'/".$rec["webroot"]."/".$db->sqlenc($rec["tag"])."', 'href=\"/".$webroot."/".$db->sqlenc($_POST["parenttag"]).$db->sqlenc($_POST["tag"])."') WHERE html LIKE '%href=\'/".$rec["webroot"]."/".$db->sqlenc($rec["tag"])."%'");
+					
+					// ..and also within the current page. Again once for " and once for '.
+					$_POST["Editor"] = str_replace("href=\"/".$rec["webroot"]."/".$db->sqlenc($rec["tag"]), "href=\"/".$webroot."/".$db->sqlenc($_POST["parenttag"]).$db->sqlenc($_POST["tag"]), $_POST["Editor"]);
+					$_POST["Editor"] = str_replace("href='/".$rec["webroot"]."/".$db->sqlenc($rec["tag"]), "href='/".$webroot."/".$db->sqlenc($_POST["parenttag"]).$db->sqlenc($_POST["tag"]), $_POST["Editor"]);
+				}
+				
+				outlineDeleteCache(); // All - if link has changed could affect all managed sites.
+
+				// Now change the siteid if required
+				if ($rec["siteid"] != $_POST["siteid"]) {
+					$db->query("UPDATE out_items SET siteid='".$db->sqlenc($_POST["siteid"])."' WHERE id='".$rec["itemid"]."'");
+				}
+				
+				// Next, modify the "last viewed" session tag if necessary
+				$_SESSION["lastpage"] = str_replace($rec["tag"], $_POST["parenttag"].$_POST["tag"], $_SESSION["lastpage"]);
+				
+				// Finally, update out_permission tags
+				$result = $db->query("SELECT htaccessuser, tag FROM out_permissions WHERE tag LIKE '".$db->sqlenc($rec["tag"])."%' AND siteid='".$rec["siteid"]."'");
+				while ($oldtagrow = $db->fetchrow($result)) {
+					$db->query("UPDATE out_permissions SET tag='".$db->sqlenc($_POST["parenttag"].$_POST["tag"]).substr($oldtagrow["tag"], strlen($rec["tag"]))."', siteid='".$db->sqlenc($_POST["siteid"])."' WHERE htaccessuser='".$oldtagrow["htaccessuser"]."' AND tag='".$oldtagrow["tag"]."' AND siteid='".$rec["siteid"]."'"); 
+				}
+				
+		
+			// If the tag hasn't changed but the title has, flush the cache to refresh the navigation
+			} else if (($_POST["title"] != $rec["title"]) and ($rec["visibility"] == "visible")) {
+				outlineDeleteCache($rec["siteid"]);
+			
+			// If the tag or title hasn't changed, uncache just the one page
+			} else {
+				outlineDeleteCacheForPage($rec["tag"], $rec["languageisocode"], $rec["siteid"]);
+			}
+		}
+	
+		// Set up a basic SQL query to be used as necessary, just to avoid repetition
+		$sqlString = "title='".$db->sqlenc($_POST["title"])."', html='".$db->sqlenc($_POST["Editor"])."', datecreated=NOW()";
+		
+		// Insert or update record according to whether the page being edited is a
+		// revision or a draft, and also according to the action.
+		if ($_POST["type"] == "draft") {
+			if (($_POST["submitaction"] == "savedraft") && cmsIsFunctionalityEnabled("drafts")) {
+				$db->query("UPDATE out_versions SET ".$sqlString." WHERE id=".$_POST["id"]);
+				$page->alert("Changes to draft saved.", "done");
+			} else if (($_POST["submitaction"] == "Send") && cmsIsFunctionalityEnabled("multipleusers")) {
+				$db->query("UPDATE out_versions SET ".$sqlString.", draftuser='".$db->sqlenc($_POST["reviewuser"])."' WHERE id=".$_POST["id"]);
+				$page->alert("Changes sent for review.", "done");
+			} else if (($_POST["submitaction"] == "Return") && cmsIsFunctionalityEnabled("multipleusers")) {
+				$returntouser = $db->querySingle("SELECT user FROM out_actionlog LEFT JOIN cfg_adminusers ON out_actionlog.user=cfg_adminusers.htaccessuser WHERE date='".$rec["datecreated"]."' AND out_actionlog.versionid=".$_POST["id"]);
+				if (!$returntouser) $returntouser = $rec["authoruser"];
+				$db->query("UPDATE out_versions SET ".$sqlString.", draftuser='".$returntouser."' WHERE id=".$_POST["id"]);
+				$page->alert("Draft returned to sender.", "done");
+			} else if ($userIsPublisher) {
+				$versionresult = $db->querySingle("SELECT MAX(versionnumber) AS maxversion FROM out_versions WHERE id=".$_POST["id"]);
+				$db->query("UPDATE out_versions SET ".$sqlString.", versionnumber=".($versionresult + 1).", islive=1, draftuser=NULL WHERE id=".$_POST["id"]);
+				$page->alert("Changes saved and published.", "done");
+			}
+			$newID = $_POST["id"];
+		} else {
+			if (($_POST["submitaction"] == "savedraft") && cmsIsFunctionalityEnabled("drafts")) {
+				$db->query("INSERT INTO out_versions SET localcontentid=".$_POST["id"].", authoruser='".$authuser."', draftuser='".$authuser."', versionnumber=0, ".$sqlString.", islive=0");
+				$page->alert("Changes saved as a draft.", "done");
+			} else if (($_POST["submitaction"] == "Send") && cmsIsFunctionalityEnabled("multipleusers")) {
+				$db->query("INSERT INTO out_versions SET localcontentid=".$_POST["id"].", authoruser='".$authuser."', draftuser='".$db->sqlenc($_POST["reviewuser"])."', versionnumber=0, ".$sqlString.", islive=0");
+				$page->alert("Changes sent for review.", "done");
+			} else if ($userIsPublisher) {
+				$versionresult = $db->querySingle("SELECT MAX(versionnumber) AS maxversion FROM out_localcontent LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid WHERE out_localcontent.id=".$_POST["id"]);
+				$db->query("INSERT INTO out_versions SET localcontentid=".$_POST["id"].", authoruser='".$authuser."', draftuser=NULL, versionnumber=".($versionresult + 1).", ".$sqlString.", islive=0");
+				$page->alert("Changes saved.", "done");
+			}
+			$newID = mysql_insert_id();
+		}
+		
+		// Outline extension: process any additional fields following the save
+		$extendArray = array(&$rec, &$_POST);
+		extendCMS("editSaveEnd", $extendArray);
+		
+		// Grab the date to synch action logs (useful for queries)
+		$newDate = $db->querySingle("SELECT datecreated FROM out_versions WHERE id=".$newID);
+		if (!$newDate) $newDate = "NOW()";
+		
+		// Write action logs as appropriate
+		if ($_POST["submitaction"] == "Send") {
+			$db->query("INSERT INTO out_actionlog SET versionid=".$newID.", user='".$authuser."', actiontype='send for review', comment='".$db->sqlenc(str_replace("\r", "", str_replace("\n", "<br />", $_POST["comment"])))."', date='".$newDate."'");
+		} else if ($_POST["submitaction"] == "Return") {
+			$db->query("INSERT INTO out_actionlog SET versionid=".$newID.", user='".$authuser."', actiontype='return draft', comment='".$db->sqlenc(str_replace("\r", "", str_replace("\n", "<br />", $_POST["comment"])))."', date='".$newDate."'");
+		} else if ($_POST["submitaction"] == "deletedraft") {
+			$db->query("INSERT INTO out_actionlog SET versionid=".$newID.", user='".$authuser."', actiontype='delete', comment='', date='".$newDate."'");
+		} else {
+			$db->query("INSERT INTO out_actionlog SET versionid=".$newID.", user='".$authuser."', actiontype='".$db->sqlenc(strtolower($_POST["submitaction"]))."', comment='', date='".$newDate."'");
+		}
+		
+		// Send a notification if necessary and wanted
+		if (($_POST["submitaction"] == "Send") && $_POST["email"]) {
+			$sendto = $db->queryRow("SELECT name, email FROM cfg_adminusers WHERE htaccessuser = '".$db->sqlenc($_POST["reviewuser"])."'");
+			$sendfrom = $db->queryRow("SELECT name, email FROM cfg_adminusers WHERE htaccessuser = '".$db->sqlenc($authuser)."'");
+			if ($sendto and $sendfrom) {
+				if (eregi("^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,3})$", $sendto["email"])) {
+					$subj = "Outline - You have just been sent a draft for review";
+					$msg = $sendto["name"].",\n\nYou have just been sent a draft of the page \"".$_POST["title"]."\" by ".$sendfrom["name"].".\n\n";
+					if ($_POST["comment"]) {
+						$msg .= $sendfrom["name"]." included the following comment: \"".$_POST["comment"]."\"\n\n";
+					} else {
+						$msg .= $sendfrom["name"]." did not include a specific comment.\n\n";
+					}
+					$msg .= "To view a list of your tasks, please visit <http://".$_SERVER["SERVER_NAME"].$_SERVER["ADMIN_AREA_PATH"]."/cms/tasks>; to view this draft, please go to <http://".$_SERVER["SERVER_NAME"].$_SERVER["ADMIN_AREA_PATH"]."/cms/edit?id=".$newID."&type=draft>.";
+					mail("\"".$sendto["name"]."\"<".$sendto["email"].">", $subj, $msg, str_replace(array("\n", "\r"), "", "From: \"".$sendfrom["name"]."\"<".(($sendfrom["email"])?$sendfromrow["email"]:"outline@assanka.net").">"));
+				}	
+			}
+		}
+		
+		if ($_POST["submitaction"] == "publish") {
+			$db->query("UPDATE out_versions SET islive=0 WHERE localcontentid=".$rec["id"]);
+			$db->query("UPDATE out_versions SET islive=1 WHERE id=".$newID);
+		}
+		if ($rec["type"] == "asset") header("Location: assets");
+		else header("Location: index");
+		exit;
+
+	// If input is invalid...
+	} else {
+		$group1->addToForm(true);
+		
+		// Add an error message
+		$page->alert("You did not complete the form correctly.  Please review the fields marked below, and ensure you have read the help text available in the panel on the right.", "error");
+	}	
+} else {
+
+	// Add some default data
+	$tagbits = explode("/", $rec["tag"]);
+	$rec["tag"] = array_pop($tagbits);
+	if (count($tagbits)) {
+		$rec["parenttag"] = implode("/", $tagbits);
+		$rec["parenttagvis"] = $rec["parenttag"]."/";
+	} else $rec["parenttagvis"] = "/";
+	
+	if ($_REQUEST["type"] == "draft") {
+		$group1->addData(array_merge($rec, array("id"=>$rec["versionid"], "type"=>"draft")));
+	} else {
+		$group1->addData($rec);
+	}
+	
+	// Set up the informational message
+	$page->alert("Editing ".(($_REQUEST["type"] == "draft")?"draft of ":"")."'".$rec["title"]."'.  When you have finished, choose a publish option from the right.", "info");
+	$editmessage = "";
+	if ($draftAction = $db->queryRow("SELECT name, actiontype, comment FROM out_actionlog LEFT JOIN cfg_adminusers ON out_actionlog.user=cfg_adminusers.htaccessuser WHERE date='".$rec["datecreated"]."' AND out_actionlog.versionid=".$_REQUEST["id"])) {
+		if ($draftAction["actiontype"] == "send for review") $editmessage .= $draftAction["name"]." has sent you this draft with".(($draftAction["comment"])?" the comment:<br /> \"".$draftAction["comment"]."\"":"out a comment.");
+		if ($draftAction["actiontype"] == "return draft") $editmessage .= $draftAction["name"]." has returned this draft with".(($draftAction["comment"])?" the comment:<br /> \"".$draftAction["comment"]."\"":"out a comment.");
+		if ($editmessage) $page->alert($editmessage, "info");
+	}
+	
+	// Add the fieldgroups to the form
+	$group1->addToForm(false);
+}
+
+// Send a warning if quotes is on, as this will need testing in that scenario
+if (get_magic_quotes_gpc()) $page->alert("This server may not be configured correctly and has the setting 'magic_quotes_gpc' set to on.  Please contact us for support as saved content may not be processed correctly.", "warning");
+
+$page->addContent("content", $form->outputForm());
+
+$tagbits = explode("/", $rec["tag"]);
+if (count($tagbits)) {
+	$currentlocation = implode("/", $tagbits);
+} else $currentlocation = "";
+
+if (($rec["tag"] != "homepage") and ($rec["type"] == "page") and $userIsPublisher) $page->addContent("content", "<script type=\"text/javascript\">addLoadEvent(function() { outlineMakeBrowseField(document.getElementById('frmeditpage_parenttagvis'), 'edit', document.getElementById('frmeditpage_parenttag'), document.getElementById('frmeditpage_siteid'), '".$currentlocation."'); if (document.getElementById('frmeditpage_sitename')) document.getElementById('frmeditpage_sitename').disabled = true; olhandler = new OutlineHandler('edit'); outlineActivateEditPage();});</script>");
+$page->addContent("context", $form->outputContextHelp());
+
+$page->render();
+
+exit;
+
+
+function addReviewPaneAndAction(&$page, $rec, $authuser) {
+	global $db;
+
+	$pwdFile = $_SERVER["DOCUMENT_ROOT"].ADMIN_AREA_PATH."/.htpasswd";
+	$tagReviewUsers = array();
+	if (file_exists($pwdFile)) {
+		$pwdFilePtr = @fopen($pwdFile, "r");
+		if ($pwdFilePtr) {
+			while (!feof($pwdFilePtr)) {
+				$userLine = fgets($pwdFilePtr, 4096);
+				$userParts = explode(":", trim($userLine));
+				if (count($userParts)) $adminUsers[] = $userParts[0];
+			}
+			fclose($pwdFilePtr);
+		}
+		if (count($adminUsers)) {
+			foreach ($adminUsers as $key=>$adminUser) {
+				if ($adminUser == "assanka" or $adminUser == $authuser) unset($adminUsers[$key]);
+			}
+			if (count($adminUsers)) { 
+				$result = $db->query("SELECT htaccessuser, name, email FROM cfg_adminusers WHERE htaccessuser IN ('".implode("','", $adminUsers)."') AND permissions_content != 'no access'");
+				while ($row = $db->fetchrow($result)) {
+					if (cmsCheckIfAuth("publish".$rec["type"], $rec["tag"], $row["htaccessuser"], false, $rec["siteid"])) {
+						if ($row["htaccessuser"] != $authuser) $tagReviewUsers[] = $row;
+					}
+				}
+			}
+		}
+	} else {
+		$reviewusers = $db->query("SELECT htaccessuser, name, email FROM cfg_adminusers WHERE permissions_content != 'no access' ORDER BY name");
+		while ($row = $db->fetchrow($reviewusers)) {
+			if (($row["htaccessuser"] != $authuser) and cmsCheckIfAuth("publish".$rec["type"], $rec["tag"], $row["htaccessuser"], false, $rec["siteid"])) {
+				$tagReviewUsers[] = $row;
+			}
+		}
+	}
+
+	$panedetails = array("--revuserssize--"=>((count($tagReviewUsers) > 10)?10:((count($tagReviewUsers) == 1)?"2":count($tagReviewUsers))));
+	$panedetails["--revusers--"];
+	foreach ($tagReviewUsers as $tagReviewUser) {
+		if (eregi("^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,3})$", $tagReviewUser["email"])) $email = "email";
+		else $email = "noemail";
+		$panedetails["--revusers--"] .= "<option value=\"".$tagReviewUser["htaccessuser"]."\" class=\"".$email."\">".$tagReviewUser["name"]."</option>";
+	}
+
+	if ($draftAction = $db->queryRow("SELECT name, actiontype, comment FROM out_actionlog LEFT JOIN cfg_adminusers ON out_actionlog.user=cfg_adminusers.htaccessuser WHERE date='".$rec["datecreated"]."' AND out_actionlog.versionid=".$_REQUEST["id"])) {
+		$panedetails["--returntoname--"] = $draftAction["name"];
+		if ($draftAction["name"] && ($draftAction["actiontype"] == "send for review")) $page->addAction("returnreview", "Return Draft", false, "if (outlineConfirmPageDraft(".$rec["draftjsconfirmvars"].")) toggleReviewPane(true, false)");
+	}
+	$page->addAction("sendforreview", "Send for Review", false, "if (outlineConfirmPageDraft(".$rec["draftjsconfirmvars"].")) toggleReviewPane(true, true)");
+	$page->addContent("context", str_replace(array_keys($panedetails), array_values($panedetails), $page->loadExternalContent("html/editreviewpane")));
+}
+
+// Update any linked assets within a string, replacing them with the
+// new asset content and then returning the string.
+function updateAssets($assetId, $string, $newContent) {
+	$assets = array();
+	$processingString = $string;
+
+	while (preg_match("/\<\!\-\-linkedasset\-id".$assetId."\-\-\>/i", $processingString, $matches)) {
+		$asset = array();
+		
+		// Note the start of the asset string, not including the span tag
+		$asset["start"] = strpos($processingString, $matches[0]) + strlen($matches[0]);
+		
+		// If there's previous assets, we need to add on a figure to mark a start position in the original string
+		if (count($assets)) {
+			$previousasset = end($assets);
+			$asset["start"] += $previousasset["start"] + $previousasset["length"] + 1;
+		}
+		
+		// Proceed to walk along the string for the end of the asset tag
+		$stringtoscan = substr($string, $asset["start"]);
+
+		// Match all opening or closing span tags
+		if (preg_match("/<\!\-\-([\/]?)linkedasset\-id".$assetId."\-\->/i", $stringtoscan, $matches)) {
+			$innerposition = strpos($stringtoscan, $matches[0]);
+			
+			// If it's a closing tag, record the location.
+			if ($matches[1] == "/") {
+				$asset["length"] = $innerposition;
+			
+			// If it's an opening tag, this asset is invalid - ignore it.  We later increment the current location to step past the invalid tag.
+			}
+			
+		// If there's no tags left, but there's still an unclosed asset, it's invalid so we ignore it.
+		} else {
+			break(1);
+		}
+
+		$processingString = substr($string, ($asset["start"] + $innerposition + 1));
+		$assets[] = $asset;
+	}
+
+	// Now proceed to loop through the assets backwards (in order not to affect previously matched strings),
+	// updating all contents as appropriate	
+	if (count($assets)) {
+		$assets = array_reverse($assets);
+	
+		foreach ($assets as $asset) {
+			$string = substr($string, 0, $asset["start"]) . $newContent . substr($string, $asset["start"]+$asset["length"]);
+		}
+	}
+
+	return $string;
+}
+
+// Process a string to remove the temporary div placed around it to allow inline assets, if appropriate
+function restoreAssetHTML($string) {
+	$string = str_replace(array("\r\n", "\r"), "\n", $string);
+	$string = str_replace("&nbsp; &nbsp;</div>", "</div>", $string);
+	$string = str_replace("<p>&nbsp; &nbsp;</p>\n</div>", "</div>", $string);
+
+	$wrapperhtml = '<div class="temporaryasseteditwrapper">';
+	$wrapperlength = strlen($wrapperhtml);
+	
+	// Attempt to step through the asset string, capturing locations of the wrapper div starts and ends.
+	while (strpos($string, $wrapperhtml) !== false) {
+		$wrapperstart = strpos($string, $wrapperhtml);
+
+		// Proceed to walk along the string for the end of the asset wrapper, keeping track of possible nested tags
+		$divstoclose = 1;
+		$currentlocation = $wrapperstart + $wrapperlength;
+		while ($divstoclose) {
+			$stringtoscan = substr($string, $currentlocation);
+
+			// Match all opening or closing div tags
+			if (preg_match("/<([\/]?)div( |>)/i", $stringtoscan, $matches)) {
+				$innerposition = strpos($stringtoscan, $matches[0]);
+
+				// If it's a closing tag, decrement the tag count.
+				if ($matches[1] == "/") {
+					$divstoclose--;
+					
+					// If all tags have been closed we can delete the closing div, and then delete the opening div:
+					if (!$divstoclose) {
+						$string = substr($string, 0, $currentlocation + $innerposition).substr($string, $currentlocation + $innerposition + 6);
+						$string = substr($string, 0, $wrapperstart).substr($string, $wrapperstart + $wrapperlength);
+					}
+
+				// If it's an opening tag, increment the nested tag count.
+				} else {
+					$divstoclose++;
+				}
+				$currentlocation += $innerposition + 1;
+
+			// If there's no tags left, but there's still an unclosed asset wrapper, it's invalid so we ignore it.
+			} else {
+				break(2);
+			}
+		}
+	}
+
+	return $string;
+}
+?>

@@ -1,0 +1,14 @@
+<!--@title|prepend:"<h4>",append:"</h4>"-->
+<table cellspacing="0" cellpadding="0" width="100%"><tr><td><table class="form">
+<!--@BLOCK:1|repeatfor:data-->
+	<!--@BLOCK:2|printifequalto:type:title-->
+		<tr><td colspan="2" style="font-weight:bold; padding: 10px 0 3px 0; font-size:14px;"><strong><!--@title--></strong></td></tr>
+	<!--@ENDBLOCK:2-->
+	<!--@BLOCK:2|printiffalse:type-->
+		<tr><td><!--@label|append:":"--></td><td<!--@BLOCK:3|printiftrue:clname--> id="cl_<!--@clname-->_<!--@key-->"<!--@ENDBLOCK:3-->><!--@valrow--></td></tr>
+	<!--@ENDBLOCK:2-->
+	<!--@BLOCK:2|printiftrue:endofcol-->
+		</table></td><td><table class="form">
+	<!--@ENDBLOCK:2-->
+<!--@ENDBLOCK:1-->
+</table></td></tr></table>
