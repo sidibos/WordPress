@@ -1,0 +1,86 @@
+#!/usr/bin/php
+<?php
+/**
+ * Execute queued requests to the FT API
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Include daemon global file
+require_once $_SERVER['COREFTCO']."/processes/global";
+require_once $_SERVER['COREFTCO']."/helpers/ftapi/v1/FTItem";
+
+// Instantiate the daemon class
+$d = new DaemonV2(array(
+	'maxinstances' => 1,
+	'name' => 'followFeedOfChanges',
+	'description' => 'Downloads the notifications feed from FT content API and queues the received items for refresh',
+	'args' => array(
+		'logmethod'           => 'The method to use for logging.  eg file or stdout (defaults to file)',
+	)
+));
+
+$args = $d->getCLIArgs();
+
+$logger = new AssankaLoggerV1('followFeedOfChanges');
+$logger->setInstanceVariables(array('pid' => getmypid()));
+try {
+	if (!$args['logmethod']) $args['logmethod'] = 'file';
+	$logger->setLogMethod($args['logmethod']);
+} catch (AssankaException $e) {
+	exit($e->getMessage()."\n");
+}
+
+// Create an API connection
+$conn = new FTAPIConnectionV1();
+
+// Store the arguments for the next request.  The first request will have no args
+$args = array();
+
+$ftmobqueue = new BeanstalkPoolV2();
+$ftmobqueue->useTube("ftmob-ftapi-queuedrequests");
+
+while (true) {
+
+	// Disable cache reading to load notification feed syncronously
+	$conn->setCacheMode(FTAPIConnection::CACHE_NONE);
+	$conn->setPopulateCache(false);
+
+	// Fetch the feed of recent notifications
+	$data = $conn->get('content/notifications/v1/items', $args);
+	$logger->write(array('action' => "fetch notifications", 'count' => count($data['notifications'])));
+
+	if (!empty($data['notifications'])) {
+
+		// Switch cache mode to async
+		$conn->setCacheMode(FTAPIConnection::CACHE_REFRESH);
+		$conn->setPopulateCache(true);
+
+		// Queue an update of each item
+		foreach ($data['notifications'] as $item) {
+			if ($item['type'] == 'content-item-update' or $item['type'] == 'content-item-deletion') {
+				$logger->write(array('action' => "queue refresh", 'type' => $item['type'], 'uuid' => $item['data']['content-item']['id']));
+				FTItemV1::get($conn, $item['data']['content-item']['id'], "plain");
+				FTItemV1::get($conn, $item['data']['content-item']['id'], "structured");
+			} else {
+				$logger->write(array('action' => "noop", 'reason' => "unsupoorted type", 'type' => $item['type']));
+			}
+			$ftmobqueue->put(json_encode($item));
+		}
+	} else {
+		$logger->write(array('action' => "noop", 'reason' => "no new notifications"));
+	}
+
+	if (!empty($data['links'])) {
+		foreach ($data['links'] as $link) {
+			if ($link['rel'] == 'next') {
+				$url = parse_url($link['href']);
+				parse_str($url['query'], $args);
+			}
+		}
+	}
+
+	$logger->write(array('action' => "sleep"));
+	sleep(10);
+}

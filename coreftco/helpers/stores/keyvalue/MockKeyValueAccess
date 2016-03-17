@@ -1,0 +1,51 @@
+e<?php
+/**
+ * Mock for modules implementing the key value access interface
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once __DIR__ . '/KeyValueAccessInterface';
+
+class MockKeyValueAccess implements KeyValueAccessInterface {
+
+	private static $_data = array();
+
+
+	/**
+	 * Getter for key valued content
+	 *
+	 * @param string $key The key used for lookup
+	 * @return blob       Data stored against that key
+	 */
+	public function get($key) {
+		if (isset(static::$_data[$key])) {
+			return static::$_data[$key];
+		}
+	}
+
+
+	/**
+	 * Existence checker for key valued content
+	 *
+	 * @param string $key The key used for checkup
+	 * @return boolean True if set, false if not
+	 */
+	public function exists($key) {
+		return isset(static::$_data[$key]);
+	}
+
+
+	/**
+	 * Setter for key valued content
+	 *
+	 * @param string  $key  Unique key for the data being set for later lookup
+	 * @param blob    $data Data to be stored
+	 * @param integer $ttl  Time to live
+	 * @return void
+	 */
+	public function set($key, $data, $ttl = 43200) {
+		static::$_data[$key] = $data;
+	}
+}

@@ -1,0 +1,354 @@
+<?php
+
+/**
+ * Extends the basic functionality of FTAuthCommmon.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+require_once $_SERVER["COREFTCO"]."/helpers/auth/FTAuthCommon";
+
+/**
+ * Extends the basic functionality of FTAuthCommon by allowing long processes and using MySqlConnectionV4.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+class FTAuthCommonV2 extends FTAuthCommon {
+
+
+	public function __construct() {
+
+		// Initialise with default User class name.
+		$this->userclass = 'FTUserV2';
+	}
+
+
+	/**
+	 * This method is to get the 'old' version number that was associated with these classes for logging purposes.
+	 *
+	 * @override FTAuthCommon::getVersion();
+	 * @return integer The version number of this instance.
+	 */
+	public function getVersion() { return 2; }
+
+	/**
+	 * @var boolean Flag that determines whether setReconnectOnFail is set on the database connections when they are created.
+	 */
+	private $islongprocess = false;
+
+	/**
+	 * Sets reconnectOnFail to true on the database connection.
+	 *
+	 * This must be called before using these helper methods.
+	 *
+	 * REVIEW:SG:20130207: This needs correct documentation to document use and maybe a potential use case.
+	 *
+	 * Only available in V2.
+	 *
+	 * @param boolean $isLongProcess Set to true to initialise database connections that attempt to reconnect on failure.
+	 * @return void
+	 */
+	public function setIsLongProcess($isLongProcess) {
+		$this->islongprocess = (bool)$isLongProcess;
+	}
+
+	/**
+	 * This method is called before authentication begins.
+	 *
+	 * @param boolean $forcereauth The force reauth parameter that was passed in from the authenticate method. @see FTAuthCommon::authenticate();
+	 * @return void
+	 * @override FTAuthCommon::preAuthentication(1);
+	 */
+	public function preAuthentication($forcereauth = false) {
+		if (isset($_SERVER['HTTP_DAMENVIRONMENT']) and !isset($_SERVER['DAMENVIRONMENT'])) {
+			$_SERVER['DAMENVIRONMENT'] = $_SERVER['HTTP_DAMENVIRONMENT'];
+		}
+
+		FTSessionV2::setMemcacheIfNotYetSet($this->getMemcache());
+	}
+
+	/**
+	 * Redirects the user to the FT Reg barrier page.
+	 *
+	 * Warning: This method calls 'exit'
+	 *
+	 * @return undefined This method will never return and will exit the PHP process.
+	 * @override FTAuthCommon::barrierRedirect();
+	 */
+	public function barrierRedirect() {
+		header("Location: http://registration.ft.com/registration/barrier?location=" . rawurlencode("http://".$_SERVER["HTTP_HOST"].$_SERVER["REQUEST_URI"]));
+		exit;
+	}
+
+	/**
+	 * Gets a handle for a session.
+	 *
+	 * If an Erights ID is supplied, returns an FTSession instance
+	 * for that EID.  Otherwise reads the PHP session for the active
+	 * user, and if it contains a flag linking it to an EID session,
+	 * returns the FTSession instance for that EID.  Otherwise
+	 * returns an instance for the anonymous PHP Session.
+	 *
+	 * @param int $eid Erights ID of user session required
+	 * @return FTSession FTSession object instance
+	 * @override FTAuthCommon::getFTSession(1);
+	 */
+	public function &getFTSession($eid = false) {
+		return FTSessionV2::getSession($eid);
+	}
+
+	/**
+	 * Detach this user's session from the PHP session, so there is no active session
+	 *
+	 * Session data is retained, and the shared session still exists, but the PHP session is no longer attached to it.
+	 *
+	 * @return void
+	 * @override FTAuthCommon::cancelActiveSession()
+	 */
+	public function cancelActiveSession() {
+		FTSessionV2::cancelActive();
+	}
+
+	/**
+	 * Clear the cached session data for the current user
+	 *
+	 * Clears the memcache session data store for the current EID.  Does not clear the PHP session, and probably should. (REVIEW:AB:20091215)
+	 *
+	 * This override clears session for FTSessionV2
+	 *
+	 * @param string $reason The reason for clearing the session, to be written to the authentication log
+	 * @return void
+	 * @override FTAuthCommon::clearSession(1);
+	 */
+	public function clearSession($reason = false) {
+		if ($reason) {
+			$this->authLog(array('clearsession' => $reason));
+		}
+
+		if ($this->useSession) {
+			FTSessionV2::setMemcacheIfNotYetSet($this->getMemcache());
+			FTSessionV2::cancelActive();
+			$SESSION_OBJ = &FTSessionV2::getSession();
+			$SESSION_DATA = &$SESSION_OBJ->getSessionVar();
+			$SESSION_DATA["user"] = null;
+			unset($SESSION_DATA["user"]);
+		}
+
+		// REVIEW:SG:20130206: Is anything depending on this, it is undocumented in DocBlock
+		return false;
+	}
+
+
+	/**
+	 * Returns a connection to our local user database
+	 *
+	 * This override adds an optional parameter that lets you select which DB connection to retrieve.
+	 * 	This also returns a MySqlConnectionV4
+	 *
+	 * @param string $mode 'read' or 'write'.  Defaults to 'write'.
+	 * @return MySqlConnectionV4
+	 * @override FTAuthCommon::getDatabase();
+	 */
+	public function getDatabase($mode = 'write') {
+		if ($mode != 'write' and $mode != 'read') {
+			throw new Exception('Invalid database mode');
+		}
+
+		$creds = array(
+			'read' => array(
+				"dbread",
+				"localread",
+				"rhjntdjjsbh"
+			),
+			'write' => array(
+				"dbmaster",
+				"write",
+				"anyermepsptp"
+			)
+		);
+
+		if (!isset($this->oacDatabase[$mode])) {
+			$this->oacDatabase[$mode] = new MySqlConnectionV4($creds[$mode][0], $creds[$mode][1], $creds[$mode][2], "ftco_oac");
+			if ($this->islongprocess) {
+				$this->oacDatabase[$mode]->setReconnectOnFail();
+			}
+		}
+		return $this->oacDatabase[$mode];
+	}
+
+	/**
+	 * Factory method for creating FTUserV2s
+	 * from this class
+	 *
+	 * This override instantiates an FTUserV2.  Additionally it calls: FTSessionV2::setMemcacheIfNotYetSet(1);
+	 *
+	 * @param integer $eid      The erights ID of the user
+	 * @param boolean $autoload whether or not to automatically load the user's details from the database
+	 * @return FTUserV2
+	 * @override FTAuthCommon::createUser(2)
+	 */
+	public function createUser($eid, $autoload = false) {
+
+		FTSessionV2::setMemcacheIfNotYetSet($this->getMemcache());
+		return new $this->userclass(
+			$eid, array('read'=> $this->getDatabase('read'), 'write'=>$this->getDatabase('write')), $autoload);
+	}
+
+	/**
+	 * Loads multiple users' data from the databases
+	 *
+	 * This override extends functionality to use MySqlConnectionV4
+	 *
+	 * @param array $eids     Array of erights IDs
+	 * @param bool  $autoload Whether to automatically populate each user from the database (this is done efficiently, but will still increase the database overhead by one query per database, not per user)
+	 * @return array  Array of user objects (FTUserV2 or $userclass), keyed by erights ID
+	 * @override FTAuthCommon::getBatchUsers(2);
+	 */
+	public function getBatchUsers($eids, $autoload=true) {
+
+		if (empty($eids) or !is_array($eids)) {
+			return false;
+		}
+
+		$users = array();
+		foreach ($eids as $id) {
+			if (is_numeric($id) and !empty($id)) {
+				$users[$id] = $this->createUser($id);
+			}
+		}
+
+		if ($autoload) {
+			$newdata = array();
+			$oacloaded = false;
+			$dbs = current($users)->getDBs();
+			$tables = current($users)->getTables();
+
+			foreach ($dbs as $dbname => $db) {
+				$res = $db->query('SELECT * FROM '.$tables[$dbname].' WHERE eid IN ('.join(',', $eids).')');
+
+				foreach ($res as $row) {
+					$users[$row['eid']]->importDataFrom($row);
+				}
+			}
+		}
+
+		return $users;
+	}
+
+	/**
+	 * Gets fields from EIDs
+	 *
+	 * Accepts either a single EID (as an integer or string) or an array of EIDs, and returns either a single field value or an array of field values, to match the format of the input.  If an array is returned, it is keyed on the eid.
+	 *
+	 * This override extends the functionality to use MySqlConnectionV4
+	 *
+	 * @param mixed  $eid   A single EID or an array of EIDs
+	 * @param string $field The database field name to fetch.
+	 * @return mixed A single field value or an array of field values keyed by EID
+	 * @overrides FTAuthCommon::getFieldFromEid(2)
+	 */
+	protected function getFieldFromEid($eid, $field) {
+		$db = $this->getDatabase('read');
+		$results = array();
+		$eids = is_array($eid) ? $eid : array($eid);
+
+		// Returns a MySqlResultV4.
+		$result = $db->query("SELECT eid, {$field} FROM users WHERE eid IN %d|list", $eids);
+
+		foreach ($result as $row) {
+			$results[$row['eid']] = $row[$field];
+		}
+
+		if (!count($results)) {
+			return false;
+		}
+
+		return is_array($eid) ? $results : reset($results);
+	}
+
+	/**
+	 * Gets EIDs from field names.
+	 *
+	 * Accepts either a single fieldValue (as a string) or an array of fieldValues, and returns either a single Erights ID or an array of Erights IDs, to match the format of the input.  If an array is returned, it is keyed on the email address.<br/><br/>
+	 *
+	 * This override extends the functionality to use MySqlConnectionV4.
+	 *
+	 * @param mixed  $fieldValue A value that could uniquely identify a user.
+	 * @param string $field      A field title that could uniquely identify a user
+	 * @return mixed A single EID or an array of EIDs
+	 * @overrides FTAuthCommon::getEidFromField(2)
+	 */
+	protected function getEidFromField($fieldValue, $field) {
+
+		$uniqueIndexes = array('email', 'username', 'passportid');
+
+		// Sanitize field value
+		if (!in_array($field, $uniqueIndexes)) {
+			throw new Exception("Field: '{$field}' is not a valid unique index in DB 'ftco_oac.users'.");
+		}
+
+		$db = $this->getDatabase('read');
+		$results = array();
+
+		$fieldValues = is_array($fieldValue) ? $fieldValue : array($fieldValue);
+
+		// Returns a MySqlResultV4.
+		$result = $db->query("SELECT eid, {$field} FROM users WHERE {$field} IN %s|list", $fieldValue);
+
+		foreach ($result as $row) {
+			$results[$row[$field]] = $row['eid'];
+		}
+
+		if (!count($results)) return false;
+		return is_array($fieldValue) ? $results : reset($results);
+	}
+
+	/**
+	 * Deprecated
+	 *
+	 * @param string $file Deprecated
+	 * @return void
+	 * @deprecated
+	 * @overrides FTAuthCommon::setLogFilename(1);
+	 */
+	public function setLogFilename($file) {
+		trigger_error('File logging is handled by the logger helper', E_USER_DEPRECATED);
+	}
+
+	/**
+	 * Deprecated
+	 *
+	 * @param string $method Deprecated
+	 * @return void
+	 * @deprecated
+	 * @overrides FTAuthCommon::setLogMethod(1);
+	 */
+	public function setLogMethod($method) {
+		trigger_error('Logger method is always \'file\'', E_USER_DEPRECATED);
+	}
+
+	/**
+	 * Returns an array of users matching a given term.  Use with extreme care, since the result set is not paginated and the dataset returned may be very large.  It will also be slower if you set autoload to true.
+	 *
+	 * This override simply makes the SQL query compatible with MySqlConnectionV4.
+	 *
+	 * @param string $term     Term to search for
+	 * @param bool   $autoload Whether to auto-populate result users (default false)
+	 * @return array Array of FTUser (or $userclass) objects
+	 * @overrides FTAuthCommon::search(2);
+	 */
+	public function search($term, $autoload=false) {
+		$db = $this->getDatabase('read');
+
+		$results = $db->queryList('SELECT eid FROM users WHERE pseudonym LIKE %s|like OR firstname LIKE %s|like OR lastname LIKE %s|like', $term, $term, $term);
+
+		if (!$results) {
+			return false;
+		}
+
+		return $this->getBatchUsers($results, $autoload);
+	}
+
+}

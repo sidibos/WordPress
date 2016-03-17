@@ -1,0 +1,57 @@
+#!/usr/bin/php
+<?php
+/**
+ * Removes all items that have not been downloaded in more than 1 month from the ftapi_cache
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Include daemon global file
+require_once $_SERVER['COREFTCO']."/processes/global";
+
+// Set the cutoff date to be 7 days prior to the last successful download
+$refdate = $dbread->querySingle('SELECT UNIX_TIMESTAMP(MAX(datelastfetch)) FROM ftapi_cache');
+if (!$refdate) $refdate = time();
+$refdate = $refdate - (60 * 60 * 24 * 7);
+
+$logger = new AssankaLoggerV1('clearOldCacheItems');
+$logger->setLogMethod('file');
+
+
+$offset = 0;
+while ($start = microtime(true) and $res = $dbread->query('SELECT HEX(`key`) as k, path, UNIX_TIMESTAMP(datelastfetch) as datelastfetch FROM ftapi_cache ORDER BY `key` DESC LIMIT '.$offset.',5000')) {
+	$end = microtime(true);
+	$log = array('items'=>0, 'pages'=>0, 'searches'=>0, 'notifications'=>0, 'old'=>0, 'querytime'=>round($end - $start, 3));
+	$start = microtime(true);
+	$offset += 5000;
+	$log['total'] = count($res);
+	if (!$log['total']) break;
+	foreach ($res as $row) {
+		if ($row['datelastfetch'] < $refdate) {
+			$dbwrite->query("DELETE FROM ftapi_cache WHERE `key`=UNHEX(%s)", $row['k']);
+			$log['old']++;
+			$offset--;
+		} elseif ($row['path'] == 'content/notifications/v1/items') {
+			$dbwrite->query("DELETE FROM ftapi_cache WHERE `key`=UNHEX(%s)", $row['k']);
+			$log['notifications']++;
+			$offset--;
+		} elseif (strpos($row['path'], 'content/items') !== false) {
+			$log['items']++;
+		} elseif (strpos($row['path'], 'site/v1/pages') !== false) {
+			$log['pages']++;
+		} elseif (strpos($row['path'], 'content/search') !== false) {
+			$dbwrite->query("DELETE FROM ftapi_cache WHERE `key`=UNHEX(%s)", $row['k']);
+			$log['searches']++;
+			$offset--;
+		}
+	}
+
+	$end = microtime(true);
+	$log['proctime'] = round($end - $start, 3);
+
+	$logger->write($log);
+
+	sleep(120);
+}
+$logger->write('Done');

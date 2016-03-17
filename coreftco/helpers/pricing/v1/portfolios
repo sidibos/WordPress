@@ -1,0 +1,184 @@
+<?php
+/**
+ * Functionality for interrogating MIOD's FT Portfolio APIs
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+
+class PortfoliosV1 {
+
+	public static function getByFTUser($user, $normalisefloats = false) {
+
+		// Check that the user has a passport ID
+		if (!self::checkFTUser($user)) return false;
+
+		// Request the data from the API
+		try {
+			$data = self::makeAPIRequest($user);
+		} catch (Exception $e) {
+			$data = array();
+		}
+
+		// HACK:LB:20120622: the WSOD API returns some bogus portfolios for users with no portfolios, ignore these
+		$bogusportfolios = array(
+			'581FE752-381E-4147-98C6-68895BAD9E2D',
+			'6A845B40-0E3A-4AD6-B316-6DE858E819C9',
+			'60F7D938-8C0C-4CBF-B657-63A2BC07431F',
+			'1ED4F70B-D9C3-4493-8373-421FD9850BA5',
+			'7A8B9D4C-F417-4577-9E6E-C8986F9A661B',
+			'4830D819-D43B-4AA9-951E-6CDC3FAE6246',
+			'78EE4799-935F-4908-88D3-5F9D15598748',
+			'66D4FB56-B73D-4888-BFC5-096C7788751E',
+			'7E8834F2-67FF-410D-A84D-9C5C51C05E14',
+			'7085EE94-0981-4981-B264-123EA00DD7A4',
+			'609745EA-8080-425E-B2B1-75BDD767016F',
+			'AC739677-4D68-4221-ACC6-9C2F464BF0FD',
+			'3C145D2E-A0C7-44EF-A8EA-010D5DC3F549',
+			'8C024051-F108-4C77-B4F0-E654CCFC562E',
+			'62EF4BFF-BCB3-43F0-B539-D9FB80F3287F',
+			'50DD6CF6-56B2-463B-996F-F40F14D70C6D',
+		);
+		$actualportfolios = array();
+		if (!empty($data['portfolios']) and is_array($data['portfolios'])) {
+			foreach ($data['portfolios'] as $portfolio) {
+				if (in_array($portfolio['portfolioId'], $bogusportfolios)) continue;
+				$actualportfolios[] = $portfolio;
+			}
+		}
+		$data['portfolios'] = $actualportfolios;
+
+		// The JSON should contain a 'portfolios' element.
+		// if not, this may be because the user has not set up any portfolios yet
+		if (empty($data['portfolios'])) return false;
+
+		if ($normalisefloats) {
+			$data = self::normaliseFloats($data);
+		}
+
+		return $data;
+	}
+
+	public static function getPortfolio($user, $portfolioid, $normalisefloats = false) {
+
+		// Check that the user has a passport ID
+		if (!self::checkFTUser($user)) return false;
+
+		// Request the data from the API
+		try {
+			$data = self::makeAPIRequest($user, $portfolioid);
+		} catch (Exception $e) {
+			return false;
+		}
+
+		// The JSON should contain a 'portfolioName' element
+		// if not, this may be because the user has not set up any portfolios yet
+		if (!isset($data['portfolioName'])) return false;
+
+		if ($normalisefloats) {
+			$data = self::normaliseFloats($data);
+		}
+
+		return $data;
+	}
+
+
+	/* Private functions */
+
+	private static function checkFTUser($user) {
+		if (!$user) return false;
+		return (bool)$user->get('passportid');
+	}
+
+
+	/**
+	 * The third-party API returns some data with plus and perentage signs whereas
+	 * some clients might need straight floats
+	 *
+	 * @param array $data The portfolio data to normalise
+	 * @return array Normalised data
+	 */
+	private static function normaliseFloats($data) {
+		$mainkeys = array('currentValue', 'todaysChangeDecimal', 'todaysChangePercent', 'totalReturnDecimal', 'totalReturnPercent');
+		$portfoliokeys = array('portfolioCurrentValue', 'portfolioTodaysChangeDecimal', 'portfolioTodaysChangePercent', 'portfolioTotalReturnDecimal', 'portfolioTotalReturnPercent');
+		$holdingkeys = array('marketPriceChangeDecimal', 'marketPriceChangePercent', 'marketPriceLast', 'holdingTodaysChangeDecimal', 'holdingTodaysChangePercent');
+
+		$normaliseportfoliofloats = function(&$portfolio) use (&$portfoliokeys, &$holdingkeys) {
+			foreach ($portfoliokeys as $floatkey) {
+				if (isset($portfolio[$floatkey])) $portfolio[$floatkey] = (float)str_replace(',', '', $portfolio[$floatkey]);
+
+				if (isset($portfolio['bucketsWithHoldings'])) {
+					foreach ($portfolio['bucketsWithHoldings'] as &$bucket) {
+						foreach ($bucket as &$holding) {
+							foreach ($holdingkeys as $holdingkey) if (isset($holding[$holdingkey])) $holding[$holdingkey] = (float)str_replace(',', '', $holding[$holdingkey]);
+						}
+					}
+				}
+			}
+		};
+
+		foreach ($mainkeys as $floatkey) {
+			if (isset($data[$floatkey])) $data[$floatkey] = (float)str_replace(',', '', $data[$floatkey]);
+		}
+
+		if (isset($data['portfolios'])) {
+			foreach ($data['portfolios'] as &$portfolio) {
+				$normaliseportfoliofloats($portfolio);
+			}
+		} else {
+			$normaliseportfoliofloats($data);
+		}
+
+		return $data;
+	}
+
+	private static function makeAPIRequest($user, $portfolioid = false) {
+		$passportid = $user->get('passportid');
+		$url = 'http://markets.ft.wallst.com/apis/iPhone/V2.0/portfolio.asp?userKey='.$passportid.'&format=JSON&sig='.md5($passportid.'5j29fj2lkaljfau').(empty($portfolioid)?'':'&portfolioId='.$portfolioid);
+		$req = new HTTPRequest($url);
+		$req->setTimeLimit(10);
+
+		$logger = new AssankaLoggerV1('portfolios');
+		$logger->setLogMethod('file');
+		$logger->setInstanceVariables(array('v' => 1, 'passportid' => $passportid, 'portfolioid' => $portfolioid));
+
+		try {
+			$req->send();
+			$resp = $req->getResponse();
+			if ($resp->getResponseStatusCode() != 200) {
+				throw new AssankaException('Markets data didn\'t return 200 OK response', 0, null, get_defined_vars());
+			}
+			$responsebody = $resp->getBody();
+			if (empty($responsebody)) {
+				throw new AssankaException('Response body was empty', 0, null, get_defined_vars());
+			}
+		} catch (HTTPRequestException $e) {
+			$logger->write(array('exception'=>$e->getMessage()));
+			throw new AssankaException('Could not get markets data via HTTP', 0, null, get_defined_vars());
+		} catch (Exception $e) {
+			$logger->write(array('exception'=>$e->getMessage()));
+			throw $e;
+		}
+
+		// BODGE:MCG:20110924: WSOD declares its response as UTF-8 but it's actually Windows-1252,
+		// so use iconv to prevent json_decode from failing when the response contains characters
+		// like € or £ (redmine #4320).
+		if (mb_detect_encoding($responsebody, 'UTF-8, Windows-1252', true) != 'UTF-8') {
+			$responsebody = iconv('Windows-1252', 'UTF-8', $responsebody);
+		}
+
+		// Decode the JSON response, and throw an exception if it was not valid JSON or the JSON
+		// did not describe an appropriate Javascript object.
+		$data = @json_decode($responsebody, true);
+		if (empty($data) or !is_array($data)) {
+			$logger->write(array('exception'=>"invalid-json", 'snip'=>substr($responsebody, 0, 1000)));
+			throw new AssankaException('Could not decode response JSON, or it was not in the expected format', 0, null, get_defined_vars());
+		}
+
+		return $data;
+	}
+}
+
+if (!class_exists('Portfolios')) class_alias('PortfoliosV1', 'Portfolios');

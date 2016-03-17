@@ -1,0 +1,128 @@
+<?php
+/**
+ * Helper for redirection between www. app. and m. ft.com
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+
+require_once($_SERVER['CORE_PATH'].'/helpers/errorhandler/v5/exception');
+
+class MobileRedirectV1 {
+	private static $validsites = array("D", "M", "A");
+	const MAX_REDIRECTS = 4;
+	private $ft_m = array(
+		'D' => null,
+		'F' => null,
+		'R' => null,
+	);
+	private $site;
+
+	/**
+	 * Constructor
+	 *
+	 * @param string $currentsite The ID of the current site (see self::$validsites for a list of valid values)
+	 */
+	public function __construct($currentsite) {
+		if (!in_array($currentsite, self::$validsites)) throw new AssankaException("Site $currentsite not recognised", 0, null, get_defined_vars());
+		$this->site = $currentsite;
+
+		// Parse the existing FT_M cookie (if it has been set)
+		if (!empty($_COOKIE['FT_M'])) {
+			foreach (explode("|", $_COOKIE['FT_M']) as $component) {
+				$keyval = explode("=", $component, 2);
+
+				// Only allow standard FT_M keys
+				if (!array_key_exists($keyval[0], $this->ft_m)) continue;
+
+				// Each of the values should only ever be a letter, but url encode anyway just in case the cookie has been modified to include invalid characters
+				if (isset($keyval[1]) and $keyval[1] !== "") $this->ft_m[$keyval[0]] = rawurlencode($keyval[1]);
+			}
+		}
+
+		// TODO:LB:20120712: If the user has an F param to their cookie which isn't the current site, redirect them to the relevant site.
+	}
+
+	// REVIEW:LB:20120712: The following functions are currently private.  This is to prevent their usage before the full public interface of this class has been finalised
+	/**
+	 * Returns whether the current site is the preferred site
+	 * (Currently only works when the MobileRedirectTesting Cookie is set)
+	 *
+	 * @return bool
+	 */
+	private function isPreferredSite() {
+
+		// TODO:LB:20120704: Remove this reference to MobileRedirectTesting once the testing phase is complete.
+		if (empty($_COOKIE['MobileRedirectTesting'])) return false;
+
+		return $this->getPreferredSite() == $this->site;
+	}
+
+	/**
+	 * Returns the site preferred by this user/device
+	 * (Currently private, but could be made public if needed)
+	 *
+	 * @return string
+	 */
+	private function getPreferredSite() {
+
+		// If there's no prefered format (F), then fallback to the default for this device (D)
+		return $this->ft_m['F'] ? $this->ft_m['F'] : $this->ft_m['D'];
+	}
+
+	/**
+	 * Sets the site preferred by this user/device
+	 *
+	 * @param string $site The ID of the preferred site (see self::$validsites for a list of valid values)
+	 * @return void
+	 */
+	private function setPreferredSite($site) {
+		if (!in_array($currentsite, self::$validsites)) throw new AssankaException("Site $site not recognised", 0, null, get_defined_vars());
+		$this->ft_m['F'] = $site;
+		$this->outputCookie();
+	}
+
+	/**
+	 * Tells the helper that this site has a representation of the content requested by the user
+	 * Resets the Count of how many redirects have happened back to null
+	 *
+	 * @return void
+	 */
+	private function gotContent() {
+		if ($this->ft_m['R'] === null) return;
+		$this->ft_m['R'] = null;
+		$this->outputCookie();
+	}
+
+
+	/**
+	 * Tells the helper that this site does not have a representation of the content requested by the user
+	 * Artificially increases the redirect count and redirects to a given url so that the user stays there
+	 *
+	 * @param string $url The url to redirect to
+	 * @return void
+	 */
+	public function contentElsewhere($url) {
+		$this->ft_m['R'] = self::MAX_REDIRECTS;
+
+		$this->outputCookie();
+		header('Location: '.$url);
+		exit;
+	 }
+
+
+	/**
+	 * Outputs the current representation of the FT_M cookie to the browser
+	 *
+	 * @return void
+	 */
+	private function outputCookie() {
+		$cookieval = "";
+		foreach ($this->ft_m as $key => $val) {
+			if ($cookieval) $cookieval .= "|";
+			$cookieval .= "$key=$val";
+		}
+		setrawcookie("FT_M", $cookieval, time() + 60 * 60 * 24 * 365, "/", "ft.com");
+
+	}
+}
