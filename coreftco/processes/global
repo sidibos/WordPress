@@ -1,0 +1,49 @@
+<?php
+/**
+ * Global include file for FT core daemons
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+if (!isset($_SERVER['COREFTCO'])) $_SERVER['COREFTCO'] = realpath(dirname(__FILE__).'/../');
+
+// Load core libraries
+require_once $_SERVER['CORE_PATH']."/helpers/database/mysql/v4/connection";
+require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
+require_once $_SERVER['CORE_PATH']."/helpers/daemon/v1/daemon";
+require_once $_SERVER['CORE_PATH']."/helpers/knownhost/v1/knownhost";
+require_once $_SERVER['CORE_PATH']."/helpers/messaging/beanstalk/v2/beanstalk";
+require_once $_SERVER['CORE_PATH']."/helpers/errorhandler/v5/errorhandler";
+require_once $_SERVER['CORE_PATH']."/helpers/memcache/v1/memcacheaccess";
+require_once $_SERVER['CORE_PATH']."/helpers/http/HTTPRequest";
+require_once $_SERVER['CORE_PATH']."/helpers/daemon/v2/daemon";
+require_once $_SERVER['CORE_PATH']."/helpers/logger/v1/logger";
+
+
+// Load FT libraries
+require_once $_SERVER['COREFTCO']."/helpers/auth/v2/ftsessionV2";
+require_once $_SERVER['COREFTCO']."/helpers/auth/v2/ftuserV2";
+require_once $_SERVER['COREFTCO']."/helpers/auth/v2/ftauthV2";
+require_once $_SERVER['COREFTCO']."/helpers/ftapi/v1/FTAPIConnection";
+
+// Create a normal database connection
+$dbwrite = new MySqlConnection("dbmaster", "write", "anyermepsptp", 'ftco_oac');
+$dbwrite->setReconnectOnFail();
+$dbread = new MySqlConnection("dbread", "localread", "rhjntdjjsbh", 'ftco_oac');
+$dbread->setReconnectOnFail();
+
+// Alias for backwards compatibility (consider removing)
+$db = $dbwrite;
+
+// Put FTAuth in long process mode so that database connections within the auth classes are made resilient
+FTAuthV2::setIsLongProcess(true);
+
+// Initialise error handler
+ErrorHandler::init();
+
+define('LOGDIR', $_SERVER['COREFTCO']."/tmp");
+if (!file_exists(LOGDIR)) {
+	umask(0);
+	mkdir(LOGDIR,0777,true);
+}

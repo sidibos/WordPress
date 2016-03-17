@@ -1,0 +1,574 @@
+<?php
+/**
+ * Connect to the FT content API to retrieve data
+ *
+ * Sends HTTP requests to the FT's content API and
+ * manages caching of results to minimise HTTP
+ * overhead
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/http/HTTPRequest';
+require_once $_SERVER['CORE_PATH'].'/helpers/memcache/v1/memcacheaccess';
+require_once $_SERVER['CORE_PATH'].'/helpers/database/mysql/v4/connection';
+require_once $_SERVER['CORE_PATH'].'/helpers/messaging/beanstalk/v2/beanstalk';
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+require_once 'FTAPIResponse';
+
+class FTAPIConnectionV1 {
+
+	// API environment to use.  Options are 'live' or 'test', which affect the hostname and API key
+	const API_ENV = 'live';
+
+	// Settings for database-backed caching (TTL is infinite)
+	const DB_HOST_WRITE = 'dbmaster';
+	const DB_USER_WRITE = 'write';
+	const DB_PASS_WRITE = 'anyermepsptp';
+	const DB_DATABASE_WRITE = 'ftco_oac';
+	const DB_HOST_READ = 'dbread';
+	const DB_USER_READ = 'localread';
+	const DB_PASS_READ = 'rhjntdjjsbh';
+	const DB_DATABASE_READ = 'ftco_oac';
+
+	// Settings for Memcache-backed caching (hosts are configured in MemcacheAccess)
+	const MEMCACHE_TTL = 300;
+	const MEMCACHE_PREFIX = 'coreftco-api-';
+
+	// Settings for in-memory caching within this object
+	const MEMORY_TTL = 300;
+	const MEMORY_CLEANUP_INTERVAL = 60;
+
+	// Settings for Beanstalk queuing of async updates
+	const MQUEUE_NAME = 'coreftco-ftapi-queuedrequests';
+	const MQUEUE_PRIORITY = 5000;
+	const MQUEUE_DELAY = 0;
+	const MQUEUE_TTR = 300;
+
+	// Defaults for data TTLs (TTLs specified in response headers are respected, but subject to these defaults)
+	const DEFAULT_DATA_TTL = 1800;
+	const DEFAULT_ERROR_TTL = 10;
+
+	// Read-cache modes follow this model for what to return
+	// 				IF MISSING			IF FRESH			IF STALE
+	// LAZY			Sync				Cache				Cache & Async
+	// FROZEN		Sync				Cache				Cache
+	// STRICT		Sync				Cache				Sync
+	// NONE			Sync				Sync				Sync
+	// REFRESH		Null & Async		Null & Async		Null & Async
+	const CACHE_FROZEN = 0, CACHE_LAZY = 1, CACHE_STRICT = 2, CACHE_NONE = 3, CACHE_REFRESH = 4;
+	private static $cacheableModes;
+
+	// Logger is static so that logWrite() method can be accessed from other API classes
+	private static $logger;
+	private $cacheopt, $populatecache = true, $cachekey, $db, $mc, $bs;
+
+	// Support a per-connection in-memory cache
+	private $cache, $nextcacheclean;
+
+	// Persist the most recent HTTP request and response, to enable deep inspection for unit testing
+	private $lastHTTPRequest, $lastHTTPResponse;
+
+	// Api override keys
+	private $apiKey, $testApiKey;
+
+	/**
+	 * Create a new FTAPIConnection
+	 *
+	 * @return FTAPIConnection
+	 */
+	public function __construct() {
+		self::$cacheableModes = array(self::CACHE_FROZEN => true, self::CACHE_LAZY => true, self::CACHE_STRICT => true);
+		$this->cacheopt = self::CACHE_LAZY;
+		$this->cachekey = false;
+		$this->db = array('read'=>null, 'write'=>null);
+		$this->mc = MemcacheAccessV1::getMemcache();
+		$this->cache = array();
+		$this->nextcacheclean = time() + self::MEMORY_CLEANUP_INTERVAL;
+	}
+
+	/**
+	 * Set cache reference behaviour
+	 *
+	 * FTAPIConnection supports several different cache interaction modes, specified using constants.  CACHE_NONE means that requests should not reference cache, and even if a cached response is available, a fresh response should always be loaded from the API.  CACHE_STRICT means that cached responses can be used until they expire, at which point a fresh response is required (stale cache cannot be used).  CACHE_LAZY means that cached responses should always be used if available, and if stale, should prompt a background asyncronous refresh of the content (so an identical request a few seconds later ought to return fresh content).  CACHE_FROZEN means that if any content is available in cache, it will always be used regardless of age.  CACHE_REFRESH means that requests should not reference cache, return null, and should prompt a background asyncronous refresh of the content.
+	 *
+	 * @param integer $newopt Cache behaviour option (use constants)
+	 * @return void
+	 */
+	public function setCacheMode($newopt) {
+		$this->cacheopt = $newopt;
+	}
+
+	/**
+	 * Turn writing to cache on or off
+	 *
+	 * @param boolean $newopt Whether to populate the cache
+	 * @return void
+	 */
+	public function setPopulateCache($newopt) {
+		$this->populatecache = !!$newopt;
+	}
+
+	/**
+	 * Set cache location
+	 *
+	 * Sets a string to concatenate with the request args when determining the cache address of the potential cached API response.  If set, the location identified by the new key will be used to read and write to the cache for the specified request, and the standard cache location will be ignored.  For example, if one cache key is used consistently with a cache mode of FROZEN, then any FTItems loaded on a connection with those settings will be retrieved from the API just once and will remain unchanged from that point onwards, even if the same FTItem is loaded with a cache mode of STRICT with a different cache key.
+	 *
+	 * @param string $key String to vary cache location
+	 * @return void
+	 */
+	public function setCacheKey($key) {
+		$this->cachekey = $key;
+	}
+
+	/**
+	 * Override the memcache accessor with an alternative class
+	 *
+	 * Allows replacement of the cache interface (mainly for testing purposes)
+	 *
+	 * @param object $mcobj An object implementing get, set and delete methods for cache access
+	 * @return void
+	 */
+	public function setMemcacheAccess($mcobj) {
+		$this->mc = $mcobj;
+	}
+
+	/**
+	 * Override the beanstalk pool with an alternative class
+	 *
+	 * Allows replacement of the beanstalk interface (mainly for testing purposes)
+	 *
+	 * @param object $bsobj An object implementing useTube, put and disconnect methods
+	 * @return void
+	 */
+	public function setBeanstalkPool($bsobj) {
+		$this->bs = $bsobj;
+	}
+
+	/**
+	 * Make a GET request to the FT API
+	 *
+	 * Get the data identified by the specified path and args from the FT API.
+	 *
+	 * @param string $path The REST resource to be loaded (from the universal API endpoint)
+	 * @param array  $args An array of data to be sent with the request as arguments
+	 * @see doRequest
+	 * @return array The response from the API is assumed to be JSON and is decoded and returned as an array
+	 */
+	public function get($path, $args = array()) {
+		return $this->doRequest($path, $args);
+	}
+
+	/**
+	 * Make a POST request to the FT API
+	 *
+	 * Send the specifed request to the FT API and return the result
+	 *
+	 * @param string $path    The REST resource to be loaded (from the universal API endpoint)
+	 * @param array  $args    An array of data to be sent with the request as arguments
+	 * @param string $enctype Content-type encoding for request body ('form', 'multipart', or 'json')
+	 * @see doRequest
+	 * @return array The response from the API is assumed to be JSON and is decoded and returned as an array
+	 */
+	public function post($path, $args = array(), $enctype = 'form') {
+		return $this->doRequest($path, $args, 'POST', $enctype);
+	}
+
+	/**
+	 * Make a request to the FT API
+	 *
+	 * Get the data identified by the specified path and args from the FT API.  Where the response is already in local memory or database cache, that saved response may be returned instead, depending on the setting of setCacheMode.
+	 *
+	 * @param string $path    The REST resource to be loaded (from the universal API endpoint)
+	 * @param array  $args    An array of data to be sent with the request as arguments
+	 * @param string $method  HTTP method name
+	 * @param string $enctype Content-type encoding for request body ('form', 'multipart', or 'json')
+	 * @return array The response from the API is assumed to be JSON and is decoded and returned as an array
+	 */
+	private function doRequest($path, $args = array(), $method = 'GET', $enctype = null) {
+		$this->cleanInternalCache();
+
+		// Remove any host element of path, since API host is determined by the connection object
+		$path = preg_replace('/^((https?\:\/\/)?([a-z0-9]+\.)*ft\.com)?\/(.*)$/i', '$4', $path);
+
+		// Determine the endpoint base path to differentiate services (path up to version number)
+		$service = preg_replace('/^(.*?)\/v\d+\/.*$/si', "$1", $path);
+
+		// Cache key is either args serialised as querystring, or MD5 sum of data
+		// if args is to be encoded into JSON (it might be deep, and large)
+		$cacheargs = $args;
+		if ($this->cachekey) {
+			$cacheargs['cachekey'] = $this->cachekey;
+		}
+		$basekey = $path . '?' . (($enctype == 'json') ? md5(json_encode($cacheargs)) : http_build_query($cacheargs));
+
+		// Use MD5 of base cache key to avoid exceeding memcache max key length
+		$cachekey = md5($basekey);
+
+		// If cache option is refresh, don't read cache, just queue an async update
+		if ($this->cacheopt == self::CACHE_REFRESH) {
+			$request = array('path'=>$path, 'method'=>$method, 'enctype'=>$enctype, 'args'=>$args, 'livettl'=>0, 'queuetime'=>microtime(true));
+			$this->queueAsync($basekey, $request);
+			return null;
+		}
+
+
+		/* Read from cache (memcache even for CACHE_NONE, in order to compute datelastchanged) */
+
+		// Start from the in-memory cache
+		if ($this->cacheopt != self::CACHE_NONE and !empty($this->cache[$cachekey])) {
+			$cache = $this->cache[$cachekey];
+
+			// Verify that the in-memory cache hasn't expired
+			if ($cache) {
+				$timeleft = $cache['meta']['ttl'] - (time() - $cache['meta']['lastfetch']);
+				if ($timeleft <= 0 and $this->cacheopt != self::CACHE_FROZEN) {
+					unset($cache);
+				} else {
+					$cache['meta']['cachetype'] = 'internal';
+				}
+			}
+		}
+
+		// Fall back to a memcache attempt if that was unsuccessful
+		if (empty($cache)) {
+			$cache = $this->mc->get($cachekey);
+			if ($cache) {
+				$this->internallyCacheItem($cachekey, $cache);
+				$cache['meta']['cachetype'] = 'memcache';
+			}
+		}
+
+		// If not found in the memory cache or memcache, try database
+		if (!$cache) {
+			$obj = $this->getDatabase('read')->querySingle('SELECT data FROM ftapi_cache WHERE `key`=UNHEX(%s)', $cachekey);
+			if ($obj) {
+				$cache = json_decode($obj, true);
+				$this->internallyCacheItem($cachekey, $cache);
+				$this->mc->set($cachekey, $cache, self::MEMCACHE_TTL);
+				$cache['meta']['cachetype'] = 'database';
+			}
+		}
+
+
+		/* If a cached response is allowed in this mode, consider returning one */
+
+		if ($cache and !empty(self::$cacheableModes[$this->cacheopt])) {
+
+			$timeleft = $cache['meta']['ttl'] - (time() - $cache['meta']['lastfetch']);
+
+			// If cache is fresh, or stale data is allowed, return cached copy
+			if ($timeleft > 0 or $this->cacheopt == self::CACHE_FROZEN or $this->cacheopt == self::CACHE_LAZY) {
+
+				if ($timeleft <= 0 and $this->cacheopt == self::CACHE_LAZY) {
+					$request = array('path'=>$path, 'method'=>$method, 'enctype'=>$enctype, 'args'=>$args, 'livettl'=>$timeleft, 'queuetime'=>microtime(true));
+					$this->queueAsync($basekey, $request);
+				}
+				$m = $cache['meta'];
+				return new FTAPIResponseV1($cache['data'], $m['ttl'], $m['lastfetch'], $m['lastchange'], $m['apitime'], $m['cachetype'], $this->cachekey);
+			}
+		}
+
+
+		/* Cache disabled or response not found in cache.  Fetch from origin */
+
+		$log = array('action'=>"fetch", 'method'=>$method, 'key'=>$basekey);
+
+		// If service endpoint is still blocked from a previous failure, abandon request.
+		if ($this->mc->get('apiblocked-'.$service)) {
+
+			// Rob encountered issues with blocking (helpdesk #40691).  This was probably caused by an issue in memcacheaccess (now fixed).  To check whether blocking now works, just log that it would have been blocked, rather than actually blocking.
+			$log['status'] = "pseudoblocked";
+			if (false) {
+				$log['status'] = "blocked";
+				self::logWrite($log);
+				return null;
+			}
+		}
+
+		// Set a flag to indicate that the update for this key is in progress (10 min TTL).  May already be set if the update was queued by a cache_lazy hit.
+		$this->mc->set('reqprog-'.$cachekey, 1, 600);
+
+		// Set up HTTP request and send
+		if ($method == 'POST') {
+			$http = new HTTPRequest(self::getApiMeta('host').$path);
+			$http->setHeader('X-Api-Key', $this->getApiKey());
+			$http->setMethod('POST');
+			if ($enctype == 'json') {
+				$http->setRequestBody(json_encode($args));
+			} else {
+				$http->setPostEncoding($enctype);
+				$http->set($args);
+			}
+		} else {
+			$http = new HTTPRequest(self::getApiMeta('host').$path);
+			$args['apiKey'] = $this->getApiKey();
+			$http->set($args);
+		}
+		$http->setMaxRetries(1);
+		$http->setTimeLimit(5);
+		try {
+			$resp = $http->send();
+			$this->lastHTTPRequest = $http;
+			$this->lastHTTPResponse = $resp;
+
+			// If response is a 500 (or greater) or 429 error (ie error or rate limit encountered), treat as an exception to avoid overwriting cache (other errors such as 404 should flush cache)
+			if ($resp->getResponseStatusCode() >= 500 or $resp->getResponseStatusCode() == 429) throw new Exception('HTTP '.$resp->getResponseStatusCode());
+
+			$item = array('meta'=>array(), 'data'=>array());
+			$item['meta']['lastchange'] = empty($cache['meta']['lastchange']) ? null : $cache['meta']['lastchange'];
+
+			// Observe TTLs specified by server, but anchor to minimum and maximum limits
+			if ($resp->getHeader('Expires') and $expires = strtotime($resp->getHeader('Expires'))) {
+				$item['meta']['ttl'] = $expires - time();
+			} else {
+				$item['meta']['ttl'] = ($resp->getResponseStatusCode() == 200) ? self::DEFAULT_DATA_TTL : self::DEFAULT_ERROR_TTL;
+			}
+
+			// Set metadata on the cache object, such as last fetch and last change timestamps
+			// (last change can only be computed if object is already in cache)
+			$item['meta']['apitime'] = round($resp->getResponseTime(), 2);
+			$item['meta']['lastfetch'] = time();
+			if ($resp->getResponseStatusCode() == 200) {
+				$item['data'] = $resp->getData();
+				if (!empty($cache['data']) and json_encode($item['data']) !== json_encode($cache['data'])) {
+					$item['meta']['lastchange'] = time();
+				}
+				$log['status'] = "success";
+				$log['resptime'] = round($resp->getResponseTime(), 2);
+			} else {
+				$item['meta']['lastchange'] = null;
+				$log['status'] = "fail_".$resp->getResponseStatusCode();
+			}
+			$log['newttl'] = $item['meta']['ttl'];
+			self::logWrite($log);
+		} catch(Exception $e) {
+			$log['status'] = "fail_exception";
+			$log['errtext'] = $e->getMessage();
+			self::logWrite($log);
+
+			// When request to remote service fails, back off: block access to this service for 5 seconds.
+			$this->mc->set('apiblocked-'.$service, 1, 5);
+			$this->mc->delete('reqprog-'.$cachekey);
+			return null;
+		}
+
+		// Store response in cache (memory, memcache and DB) if writing to cache is enabled and item has a positive TTL
+		if ($this->populatecache and !empty($item['meta']['ttl'])) {
+			$this->internallyCacheItem($cachekey, $item);
+			$this->mc->set($cachekey, $item, self::MEMCACHE_TTL);
+			$this->getDatabase('write')->query('INSERT INTO ftapi_cache SET `key`=UNHEX(%s), path=%s, args=%s, data=%s, datefirstfetch=NOW(), datelastfetch=NOW() ON DUPLICATE KEY UPDATE data=%s, datelastfetch=NOW(), datelastchanged=%s|date', $cachekey, $path, json_encode($args), json_encode($item), json_encode($item), $item['meta']['lastchange']);
+		}
+
+		$this->mc->delete('reqprog-'.$cachekey);
+		$m = $item['meta'];
+		return new FTAPIResponseV1($item['data'], $m['ttl'], $m['lastfetch'], $m['lastchange'], $m['apitime'], 'none', $this->cachekey);
+	}
+
+	/**
+	 * Queue an asyncronous request
+	 *
+	 * Save a request to the message queue for async processing by a worker daemon.
+	 *
+	 * @param string $mckey   The cache key for this request
+	 * @param array  $request An array of request data
+	 * @return void
+	 */
+	protected function queueAsync($mckey, $request) {
+
+		$service = preg_replace('/^(.*?)\/v\d+\//i', "$1", $request['path']);
+		$service_endpoint_offline = false;
+		$already_queued = $this->mc->get('reqprog-'.md5($mckey));
+		$request['vid'] = (isset($_SERVER['HTTP_X_VARNISH'])) ? $_SERVER['HTTP_X_VARNISH'] : '';
+		if ($service_endpoint_offline or $already_queued) {
+
+			// This generates a lot of log traffic, so only gets logged when trace in enabled
+			self::logWrite(array('action'=>"queue_update_skipped", 'key'=>$mckey, 'endpoint_offline' => $service_endpoint_offline), true);
+
+		} else {
+
+			// Halve the priority (making the job more urgent) if the cache mode is refresh, placing refreshing items ahead of lazy loading ones
+			$pri = self::MQUEUE_PRIORITY;
+			if ($this->cacheopt == self::CACHE_REFRESH) $pri = round($pri / 2);
+			self::logWrite(array('action'=>"queue_update", 'key'=>$mckey, 'pri'=>$pri, 'cachemode'=>$this->cacheopt, 'pid'=>getmypid()));
+			$bs = $this->getBeanstalk();
+			$bs->useTube(self::MQUEUE_NAME);
+			$bs->put(json_encode($request), $pri, self::MQUEUE_DELAY, self::MQUEUE_TTR);
+
+			// Set a flag to indicate that the update for this key is in progress (10 min TTL)
+			$this->mc->set('reqprog-'.md5($mckey), 1, 600);
+		}
+
+	}
+
+	/**
+	 * Get a handle to the database in which to store and reference persistent cached data
+	 *
+	 * @param string $type Either 'read' or 'write' (default 'write')
+	 * @return MySQLConnectionV4
+	 */
+	private function getDatabase($type='write') {
+		if ($type !== 'write' and $type !== 'read') return null;
+		if (empty($this->db[$type])) {
+			if ($type == 'write') {
+				$this->db[$type] = new MySqlConnectionV4(self::DB_HOST_WRITE, self::DB_USER_WRITE, self::DB_PASS_WRITE, self::DB_DATABASE_WRITE);
+			} else {
+				$this->db[$type] = new MySqlConnectionV4(self::DB_HOST_READ, self::DB_USER_READ, self::DB_PASS_READ, self::DB_DATABASE_READ);
+			}
+			$this->db[$type]->setReconnectOnFail();
+		}
+		return $this->db[$type];
+	}
+
+	/**
+	 * Get a handle to beanstalk
+	 *
+	 * @return BeanstalkPoolV1
+	 */
+	private function getBeanstalk() {
+		if ($this->bs) return $this->bs;
+		$this->bs = new BeanstalkPoolV2();
+		return $this->bs;
+	}
+
+	/**
+	 * Get default connection settings based on current environment
+	 *
+	 * @param string $entry The setting to fetch (host or key)
+	 * @return string The setting
+	 */
+	private function getApiMeta($entry) {
+		$apis = array(
+			'test-live' => array('host'=>'http://api.ft.com/', 'key'=>'3a8ff92699a30b7d53c96325f0616151'),
+			'live-live' => array('host'=>'http://api.ft.com/', 'key'=>'2ff50f876aab083a7f1490bcc523f121'),
+			'test-test' => array('host'=>'http://test.api.ft.com/', 'key'=>'e8c1bb85f7e73a6899edb275f2b92e7d'),
+			'live-test' => array('host'=>'http://test.api.ft.com/', 'key'=>'e8c1bb85f7e73a6899edb275f2b92e7d')
+		);
+		$endpoint = (!empty($_SERVER['IS_LIVE']) ? 'live' : 'test') . '-' . self::API_ENV;
+		return $apis[$endpoint][$entry];
+	}
+
+	/**
+	 * Get the API key for a given environment
+	 *
+	 * @param string $entry The endpoint to use (either test or live)
+	 * @return string        The api key to use
+	 */
+	private function getApiKey() {
+		if (self::API_ENV === 'live' and isset($this->apiKey)) {
+			return $this->apiKey;
+		} elseif (self::API_ENV !== 'live' and isset($this->testApiKey)) {
+			return $this->testApiKey;
+		}
+		return $this->getApiMeta('key');
+	}
+
+
+	/**
+	 * Store an item in the internal in-memory cache.
+	 *
+	 * @param string $cachekey The cachekey to store the item under
+	 * @param mixed  $item     The item to cache
+	 * @return void
+	 */
+	private function internallyCacheItem($cachekey, $item) {
+		$item['meta']['internalcachetime'] = time();
+		$this->cache[$cachekey] = $item;
+	}
+
+
+	/**
+	 * Periodically clean up the internal in-memory cache to avoid stale items.
+	 *
+	 * @return void
+	 */
+	private function cleanInternalCache() {
+
+		// Determine whether a cache clean needs to occur
+		if ($this->nextcacheclean > time()) {
+			return;
+		}
+
+		// Iterate over the cache and remove old items
+		$cutofftime = time() - self::MEMORY_TTL;
+		foreach ($this->cache as $key=>$item) {
+			if ($item['meta']['internalcachetime'] < $cutofftime) {
+				unset($this->cache[$key]);
+			}
+		}
+
+		$this->nextcacheclean = time() + self::MEMORY_CLEANUP_INTERVAL;
+	}
+
+
+	/**
+	 * Remove all items from the internal cache.
+	 *
+	 * @return void
+	 */
+	public function purgeInternalCache() {
+		$this->cache = array();
+		$this->nextcacheclean = time() + self::MEMORY_CLEANUP_INTERVAL;
+	}
+
+
+	/**
+	 * Write a line to the API log
+	 *
+	 * @param mixed   $vars  Array or string to write
+	 * @param boolean $trace If true, use logger's trace method
+	 * @return void
+	 */
+	public static function logWrite($vars, $trace=false) {
+		if (!isset(self::$logger)) {
+			self::$logger = new AssankaLoggerV1("ftapi");
+			self::$logger->setLogMethod('file');
+		}
+		if ($trace) {
+			self::$logger->trace($vars);
+		} else {
+			self::$logger->write($vars);
+		}
+	}
+
+	/**
+	 * Allow deep inspection for the purposes of automated testing
+	 *
+	 * @return HTTPRequest object
+	 */
+	public function getLastHTTPResponse() {
+		return $this->lastHTTPResponse;
+	}
+
+	/**
+	 * Overrides the default API key used when API_ENV is test
+	 *
+	 * @param string $key Key
+	 * @return void
+	 */
+	public function setApiKey($key) {
+		$this->apiKey = $key;
+	}
+
+	/**
+	 * Overrides the default API key used when API_ENV is test
+	 *
+	 * @param string $key Key
+	 * @return void
+	 */
+	public function setTestApiKey($key) {
+		$this->testApiKey = $key;
+	}
+
+}
+
+// Alias to unversioned name, and throw a deprecation warning if it's used.
+if (!class_exists('FTAPIConnection')) {
+	class FTAPIConnection extends FTAPIConnectionV1 {
+		public function __construct() {
+			trigger_error('Please instantiate FTAPIConnection using canonical class name', E_USER_DEPRECATED);
+			parent::__construct();
+		}
+	}
+}

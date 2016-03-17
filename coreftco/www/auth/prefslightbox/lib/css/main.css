@@ -1,0 +1,28 @@
+body { margin: 0; padding: 0; font-family:arial,helvetica,sans-serif;}  
+h1 { color:#7F7F7F;font-size:20px; font-weight:normal; margin:0; padding: 0; }
+a:link, a:visited { color: #4680A8; text-decoration:none; }
+a:hover { color: black }
+p { font-size: 13px }
+form { margin: 0; }
+.fieldrow { margin: 16px 0 0 0 }
+.fieldrow label { display:block; font-weight:bold; margin:0 0 3px 0; padding:0; font-size: 14px }
+.fieldrow .note { margin: 0 0 3px 0; font-size: 11px; color: #555 }
+.fieldrow input.text { font-size: 12px; padding: 4px; border: 1px solid #AAA; width: 370px }
+.fieldrow .error { display:block; font-size: 11px; color: #9E2F50; font-weight: bold; padding: 2px 0 0 0; }
+.buttonrow { margin: 16px 0 0 0; text-align: right }
+
+p.subtitle { margin: 6px 0 10px 0; padding:0; font-size: 11px; color: #555 }
+p.subtitle span { color: black }
+#successpanel { display: none; width: 100%; background:url(/auth/prefslightbox/lib/img/spinner.gif) 50% 55px no-repeat; padding: 75px 0 0 0; color: #777; font-size: 12px; font-weight:bold; text-align:center }
+
+.linkButton a { color: #fff; }
+.linkButton a:hover { color: #ddd; }
+.linkButton span { display: inline-block; padding: 0 8px 0 0; font-size: 16px; line-height: 30px; background: #4781aa url(/auth/prefslightbox/lib/img/button_sprite.png) no-repeat scroll right top; }
+.linkButton span span { padding: 0 4px 0 10px; background: transparent url(/auth/prefslightbox/lib/img/button_sprite.png) no-repeat scroll left -32px; }
+.medium span { display: inline-block; padding: 0 8px 0 0; font-size: 14px; line-height: 24px; background-position: right -64px; }
+.medium span span { background-position: left -90px; }
+.mediumRed span { font-size: 14px; line-height: 24px; background-position: right -217px; }
+.mediumRed span span { background-position: left -243px; }
+.submit { border:0; padding:0; background:transparent; color:#fff; padding: 0 0 0 6px; font-family: Arial, Helvetica, sans-serif; cursor:pointer; white-space: nowrap; overflow: visible; }
+.submit:hover { color: #ddd; }
+	

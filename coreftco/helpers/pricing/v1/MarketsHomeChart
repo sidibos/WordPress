@@ -1,0 +1,99 @@
+<?php
+/**
+ * Functionality for interrogating MIOD's Yesterdays Indices
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+require_once $_SERVER['CORE_PATH'] . '/helpers/http/v1/CachedHTTPRequest';
+require_once $_SERVER['CORE_PATH'] . '/helpers/memcache/v1/memcacheaccess';
+require_once __DIR__ . '/../../stores/keyvalue/KeyValueAccessInterface';
+
+class MarketsHomeChartV1 {
+
+	private $_normalizeFloats, $_lookupList, $_mc, $_keyValueAccess;
+
+	private static $_defaultLookupList = array(
+		array('name' => 'FTSE100', 'wsodIssue' => 572009),
+		array('name' => 'UK 10 yr Gilt', 'wsodIssue' => 21213187),
+		array('name' => 'Pound/Dollar', 'wsodIssue' => 'GBPUSD', 'isCurrency' => true),
+		array('name' => 'Euro/Dollar', 'wsodIssue' => 'EURUSD', 'isCurrency' => true),
+		array('name' => 'WTI Crude Oil', 'wsodIssue' => 1070572),
+		array('name' => 'Gold', 'wsodIssue' => 1045492)
+	);
+
+	public function __construct() {
+		$this->_lookupList = static::$_defaultLookupList;
+		$this->_mc = MemcacheAccessV1::getMemcache();
+	}
+
+	public function setLookupList($lookupList) {
+		$this->_lookupList = $lookupList;
+	}
+
+	public function setKeyValueAccess(\KeyValueAccessInterface $keyValueAccess) {
+		$this->_keyValueAccess = $keyValueAccess;
+	}
+
+	private function getSingleChart($wsodIssue, $isCurrency = false) {
+
+		// First request the markets home chart json
+		// for the specified wsod issue.
+		// TODO:MA:20130201 I don't know what isCurrency is for.
+		$request = new CachedHTTPRequestV1('http://apis.markets.ft.com/APIs/MarketsHomeChart/json?wsodIssue=' . $wsodIssue . '&height=200&width=500');
+		$request->setCacheMode(CachedHTTPRequestV1::CACHE_LAZY);
+		$request->setCacheTTL(1200);
+		$request->useMemcache(MemcacheAccessV1::getMemcache());
+		$responseObject = $request->send();
+		$response = $responseObject->getData('json');
+
+		if (!isset($response['Chart'])) {
+			throw new AssankaException('WSOD returned invalid data');
+		}
+
+		$chartImageRequest = new CachedHTTPRequestV1($response['Chart']);
+		$chartImageRequest->setCacheMode(CachedHTTPRequestV1::CACHE_LAZY);
+		$chartImageRequest->setCacheTTL(1200);
+		$chartImageRequest->useMemcache(MemcacheAccessV1::getMemcache());
+		$responseObject = $chartImageRequest->send();
+		$response = $responseObject->getData();
+
+		if (!isset($response)) {
+			throw new AssankaException('WSOD returned invalid data');
+		}
+
+		$key = 'MarketsHomeChart:' . $wsodIssue . ':' . sha1($response);
+
+		// If cache manager provided,
+		// push the image into the store
+		if ($this->_keyValueAccess and !$this->_keyValueAccess->exists($key)) {
+
+			// COMPLEX:MA:20130201 - LB asked me to write some notes:-
+			// Set the TTL be a week so that the only case where the
+			// image controller won't be able to get this data is if
+			// the app tries to download the images a week after the
+			// images have been saved - when they problem aren't
+			// relevant anymore anyway.
+			// The app should be able to handle this gracefully by
+			// showing a grey box instead of a loaded image.
+			$this->_keyValueAccess->set($key, $response, 604800);
+		}
+		return $key;
+	}
+
+	public function getData() {
+		$data = array();
+		foreach ($this->_lookupList as $lookup) {
+			if (!isset($lookup['isCurrency'])) {
+				$lookup['isCurrency'] = false;
+			}
+			$data[] = array(
+				'name' => $lookup['name'],
+				'image' => $this->getSingleChart($lookup['wsodIssue'], $lookup['isCurrency'])
+			);
+		}
+		return $data;
+	}
+}
+
+if (!class_exists('YesterdaysIndices')) class_alias('MarketsHomeChartV1', 'MarketsHomeChart');

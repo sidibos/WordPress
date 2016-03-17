@@ -1,0 +1,26 @@
+<div id="formpanel">
+	<h1>Your FT.com account</h1>
+	<!--@BLOCK:1|iffalse:isforced-->
+	<p class="subtitle">The settings below are used when you <span>comment on FT articles</span>. <a target="_top" href="http://registration.ft.com/registration/selfcare/">Go to full profile</a>.</p>
+	<!--@ENDBLOCK:1-->
+	<!--@BLOCK:1|iftrue:isforced-->
+	<p class="subtitle">Please set your public identity before you comment. This will be stored in your <a target="_top" href="http://registration.ft.com/registration/selfcare/">FT account profile</a>.</p>
+	<!--@ENDBLOCK:1-->
+	<form method='POST' action='/auth/prefslightbox/' onsubmit='showSaveProgress()'>
+		<input type="hidden" name="set" value="pseudonym" />
+		<input type="hidden" name="returnurl" value="<!--@returnurl-->" />
+		<div class="fieldrow required">
+			<label for='txtpseudonym'>Pseudonym</label>
+			<div class="note">Displayed with every comment and post you write.<br /><strong>Previous comments made under this name will be updated.</strong></div>
+			<div class="controls"><input type="text" class="text" name="pseudonym" id="txtpseudonym" value="<!--@pseudonym-->" /></div>
+			<!--@e_pseudonym|prepend:"<span class=\"error\">",append:"</span>"-->
+		</div>
+		<div class="buttonrow">
+			<button type="submit" class="linkButton medium submit"><span><span>Save</span></span></button>
+			<button type="button" class="linkButton mediumRed submit" onclick="reloadParent()"><span><span>Cancel</span></span></button>
+		</div>
+	</form>
+</div>
+<script type="text/javascript">
+obj('txtpseudonym').focus();
+</script>
