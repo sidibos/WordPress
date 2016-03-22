@@ -12,6 +12,9 @@ if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROO
 //require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 
 $dir = $_SERVER['DOCUMENT_ROOT'] . "/vendor";
+if(!is_dir($dir)){
+  echo 'is not a dir '.$dir;die;
+} 
 $dh  = opendir($dir);
 $dir_list = array($dir);
 while (false !== ($filename = readdir($dh))) {
@@ -23,7 +26,6 @@ foreach ($dir_list as $dir) {
         require_once $filename;
 }
 
-print_r($dir_list);die;
 
 //include_all_php($_SERVER['DOCUMENT_ROOT'] . "/vendor");
 
