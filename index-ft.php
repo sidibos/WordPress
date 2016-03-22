@@ -11,6 +11,15 @@ if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROO
 //require_once(__DIR__ . '/vendor/autoload.php');
 //require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 
+function include_all_php($folder){
+    foreach (glob("{$folder}/*.php") as $filename)
+    {
+        include $filename;
+    }
+}
+
+include_all_php($_SERVER['DOCUMENT_ROOT'] . "/vendor");
+
 // Initialise the FTLabs logger for nicer dev errors, but disable reporting to the Labs system
 $logger = \FTLabs\Logger::init();
 $logger->setHandlerMinSeverity('report', \Psr\Log\LogLevel::EMERGENCY);
