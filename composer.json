@@ -2,7 +2,10 @@
     "name": "ft/blogs",
     "description": "An installation of WordPress",
     "config": {
-           "secure-http": false
+           "secure-http": false,
+           "github-oauth": {
+              "github.com": "c525aafaf3c5775b3a3c83e0ce797ca238c5f3e7"
+            } 
     },
     "repositories": [
         {
@@ -19,6 +22,7 @@
         "ftlabs/content-api": "~1.0.0",
         "ftlabs/helpers": "~1.0.0",
         "ftlabs/http": "~2.2.1",
+         "ftlabs/memcache": "~1.0.0",
         "ftlabs/mysql": "5.*",
         "ftlabs/logger": "~1.52",
         "pusher/pusher-php-server": "^2.2",
