@@ -164,7 +164,6 @@ class MySqlConnection {
 							'eh:noreport'=>true,
 						));
 					} else {
-						trigger_error("Database connection error '{$this->conn->error}' server '{$this->server}' (will try again) eh:noreport eh:hashcode=DB".str_pad($this->conn->errno, 6, '0', STR_PAD_LEFT).' eh:tolerance=10/day', E_USER_WARNING);
 						sleep($failedConnectionAttempts);
 					}
 				} else {
@@ -284,7 +283,7 @@ class MySqlConnection {
 					case PREG_INTERNAL_ERROR:
 						$error = "Internal PREG error.";
 						if (++$failedParseAttempts < self::MAX_PARSE_FAILURES) {
-							trigger_error("Query is empty: $error eh:caller eh:noreport eh:hashcode=DBE17747 eh:tolerance=5/day", E_USER_WARNING);
+							trigger_error("Query is empty: $error eh:caller eh:noreport eh:hashcode=DBE17747", E_USER_WARNING);
 							sleep($failedParseAttempts);
 							continue 2;
 						}

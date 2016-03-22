@@ -135,19 +135,19 @@
     },
     {
         "name": "ftlabs/logger",
-        "version": "1.81",
-        "version_normalized": "1.81.0.0",
+        "version": "1.95",
+        "version_normalized": "1.95.0.0",
         "source": {
             "type": "git",
             "url": "http://git.svc.ft.com/scm/log/logger.git",
-            "reference": "934573e971cc082c61f814772541134b3f90210d"
+            "reference": "0d988d84e12b2e4b8f7360cb65ec752178fe1cc6"
         },
         "require": {
             "ftlabs/exception": "~1.1",
             "psr/log": "~1.0",
             "raven/raven": "~0.12.0"
         },
-        "time": "2015-09-16 17:09:09",
+        "time": "2016-01-29 14:14:23",
         "type": "library",
         "installation-source": "source",
         "autoload": {
@@ -225,53 +225,6 @@
         "description": "FT Authentication client"
     },
     {
-        "name": "ftlabs/content-api",
-        "version": "v1.0.1",
-        "version_normalized": "1.0.1.0",
-        "source": {
-            "type": "git",
-            "url": "http://git.svc.ft.com/scm/labsmisc/content-api.git",
-            "reference": "d595af4635411c1f97ea178eadfbff3bfe8bdcf9"
-        },
-        "require": {
-            "ftlabs/exception": "1.*",
-            "ftlabs/http": "2.*",
-            "ftlabs/logger": "1.*",
-            "ftlabs/memcache": "1.*"
-        },
-        "time": "2014-09-15 14:29:12",
-        "type": "library",
-        "installation-source": "source",
-        "autoload": {
-            "psr-4": {
-                "FTLabs\\": "src/"
-            }
-        },
-        "description": "FT Content API client"
-    },
-    {
-        "name": "ftlabs/mysql",
-        "version": "5.4.0",
-        "version_normalized": "5.4.0.0",
-        "source": {
-            "type": "git",
-            "url": "http://git.svc.ft.com/scm/labsmisc/mysql.git",
-            "reference": "6caac804ff7e9075c91d610d101e8ce0bdcec7ab"
-        },
-        "require": {
-            "ftlabs/exception": "~1.2.1"
-        },
-        "time": "2015-09-08 12:05:53",
-        "type": "library",
-        "installation-source": "source",
-        "autoload": {
-            "psr-0": {
-                "FTLabs": "src/"
-            }
-        },
-        "description": "FT Labs wrapper for using MySQL in PHP"
-    },
-    {
         "name": "jancimajek/gapi",
         "version": "dev-master",
         "version_normalized": "9999999-dev",
@@ -309,52 +262,6 @@
         "support": {
             "source": "https://github.com/jancimajek/gapi-google-analytics-php-interface/tree/master"
         }
-    },
-    {
-        "name": "pusher/pusher-php-server",
-        "version": "v2.2.1",
-        "version_normalized": "2.2.1.0",
-        "source": {
-            "type": "git",
-            "url": "https://github.com/pusher/pusher-http-php.git",
-            "reference": "79d755cc5d5b02b67779e2a40782fd6e3726657d"
-        },
-        "dist": {
-            "type": "zip",
-            "url": "https://api.github.com/repos/pusher/pusher-http-php/zipball/79d755cc5d5b02b67779e2a40782fd6e3726657d",
-            "reference": "79d755cc5d5b02b67779e2a40782fd6e3726657d",
-            "shasum": ""
-        },
-        "require": {
-            "ext-curl": "*",
-            "php": ">=5.2"
-        },
-        "require-dev": {
-            "phpunit/phpunit": "~4"
-        },
-        "time": "2015-05-13 11:01:46",
-        "type": "library",
-        "installation-source": "dist",
-        "autoload": {
-            "classmap": [
-                "lib/"
-            ]
-        },
-        "notification-url": "https://packagist.org/downloads/",
-        "license": [
-            "MIT"
-        ],
-        "description": "Library for interacting with the Pusher REST API",
-        "homepage": "https://github.com/pusher/pusher-php-server",
-        "keywords": [
-            "events",
-            "php-pusher-server",
-            "publish",
-            "pusher",
-            "realtime",
-            "rest",
-            "trigger"
-        ]
     },
     {
         "name": "simplepie/simplepie",
@@ -410,6 +317,152 @@
             "atom",
             "feeds",
             "rss"
+        ]
+    },
+    {
+        "name": "michelf/php-markdown",
+        "version": "1.5.0",
+        "version_normalized": "1.5.0.0",
+        "source": {
+            "type": "git",
+            "url": "https://github.com/michelf/php-markdown.git",
+            "reference": "e1aabe18173231ebcefc90e615565742fc1c7fd9"
+        },
+        "dist": {
+            "type": "zip",
+            "url": "https://api.github.com/repos/michelf/php-markdown/zipball/e1aabe18173231ebcefc90e615565742fc1c7fd9",
+            "reference": "e1aabe18173231ebcefc90e615565742fc1c7fd9",
+            "shasum": ""
+        },
+        "require": {
+            "php": ">=5.3.0"
+        },
+        "time": "2015-03-01 12:03:08",
+        "type": "library",
+        "extra": {
+            "branch-alias": {
+                "dev-lib": "1.4.x-dev"
+            }
+        },
+        "installation-source": "dist",
+        "autoload": {
+            "psr-0": {
+                "Michelf": ""
+            }
+        },
+        "notification-url": "https://packagist.org/downloads/",
+        "license": [
+            "BSD-3-Clause"
+        ],
+        "authors": [
+            {
+                "name": "John Gruber",
+                "homepage": "http://daringfireball.net/"
+            },
+            {
+                "name": "Michel Fortin",
+                "email": "michel.fortin@michelf.ca",
+                "homepage": "https://michelf.ca/",
+                "role": "Developer"
+            }
+        ],
+        "description": "PHP Markdown",
+        "homepage": "https://michelf.ca/projects/php-markdown/",
+        "keywords": [
+            "markdown"
+        ]
+    },
+    {
+        "name": "ftlabs/content-api",
+        "version": "v1.0.1",
+        "version_normalized": "1.0.1.0",
+        "source": {
+            "type": "git",
+            "url": "http://git.svc.ft.com/scm/labsmisc/content-api.git",
+            "reference": "d595af4635411c1f97ea178eadfbff3bfe8bdcf9"
+        },
+        "require": {
+            "ftlabs/exception": "1.*",
+            "ftlabs/http": "2.*",
+            "ftlabs/logger": "1.*",
+            "ftlabs/memcache": "1.*"
+        },
+        "time": "2014-09-15 14:29:12",
+        "type": "library",
+        "installation-source": "source",
+        "autoload": {
+            "psr-4": {
+                "FTLabs\\": "src/"
+            }
+        },
+        "description": "FT Content API client"
+    },
+    {
+        "name": "ftlabs/mysql",
+        "version": "5.4.1",
+        "version_normalized": "5.4.1.0",
+        "source": {
+            "type": "git",
+            "url": "http://git.svc.ft.com/scm/labsmisc/mysql.git",
+            "reference": "b3abc42e5e7c6f400100c810283d11ba86de7681"
+        },
+        "require": {
+            "ftlabs/exception": "~1.2.1"
+        },
+        "time": "2016-01-04 14:28:05",
+        "type": "library",
+        "installation-source": "source",
+        "autoload": {
+            "psr-0": {
+                "FTLabs": "src/"
+            }
+        },
+        "description": "FT Labs wrapper for using MySQL in PHP"
+    },
+    {
+        "name": "pusher/pusher-php-server",
+        "version": "v2.3.0",
+        "version_normalized": "2.3.0.0",
+        "source": {
+            "type": "git",
+            "url": "https://github.com/pusher/pusher-http-php.git",
+            "reference": "c03f5702d774d2c68785d4b61cd4701ed10759c5"
+        },
+        "dist": {
+            "type": "zip",
+            "url": "https://api.github.com/repos/pusher/pusher-http-php/zipball/c03f5702d774d2c68785d4b61cd4701ed10759c5",
+            "reference": "c03f5702d774d2c68785d4b61cd4701ed10759c5",
+            "shasum": ""
+        },
+        "require": {
+            "ext-curl": "*",
+            "php": ">=5.2"
+        },
+        "require-dev": {
+            "phpunit/phpunit": "~4"
+        },
+        "time": "2016-02-22 15:43:51",
+        "type": "library",
+        "installation-source": "dist",
+        "autoload": {
+            "classmap": [
+                "lib/"
+            ]
+        },
+        "notification-url": "https://packagist.org/downloads/",
+        "license": [
+            "MIT"
+        ],
+        "description": "Library for interacting with the Pusher REST API",
+        "homepage": "https://github.com/pusher/pusher-php-server",
+        "keywords": [
+            "events",
+            "php-pusher-server",
+            "publish",
+            "pusher",
+            "realtime",
+            "rest",
+            "trigger"
         ]
     }
 ]

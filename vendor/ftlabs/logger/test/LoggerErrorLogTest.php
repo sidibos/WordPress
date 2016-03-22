@@ -64,7 +64,7 @@ class LoggerErrorLogTest extends PHPUnit_Framework_TestCase {
 		$this->assertEquals("Testīng", $err_log->getNiceTitle());
 		$this->assertEquals(__FILE__, $bt[0]['file']);
 		$this->assertEquals($line, $bt[0]['line']);
-		$this->assertEquals(array('projcode'=>"1234", 'tolerance'=>'1/hour'), $err_log->getTags());
+		$this->assertEquals(array('projcode'=>"1234", 'tolerance'=>'1/hour', 'noreport'=>true), $err_log->getTags());
 
 		$errtree = $err_log->getAsSerializableErrorTree();
 		$this->assertTrue(isset($errtree['Error details']['Error handling']['hash']));

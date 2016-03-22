@@ -10,7 +10,7 @@ namespace FTLabs;
 use \Psr\Log\LogLevel;
 
 class SentryReportLogHandler extends AbstractLogHandler {
-	const FULL_LOG_INTERVAL = 14400;
+	const FULL_LOG_INTERVAL = 60;
 	private $devmode;
 	private $client;
 
@@ -42,7 +42,8 @@ class SentryReportLogHandler extends AbstractLogHandler {
 
 		// If most recent mod time is more than FULL_LOG_INTERVAL seconds ago, include additional
 		// context and full globals in debug log.  Always include globals if devmode is enabled
-		if ($this->devmode || (!$highload && $this->getLatestReportTime($logdir) < time()-self::FULL_LOG_INTERVAL)) {
+		$sendFullData = $this->devmode || (!$highload && $this->getLatestReportTime($logdir) < time()-self::FULL_LOG_INTERVAL);
+		if ($sendFullData) {
 			$report->addExtendedInformation();
 		} else {
 			$report->removeExtendedInformation('Debug curtailed because a previous full report of the same error has been made recently');
@@ -66,8 +67,11 @@ class SentryReportLogHandler extends AbstractLogHandler {
 			'level' => $severityToSentry[$report->getSeverity()],
 			'tags' => $errortags,
 			'message' => $report->getTitle(),
-			'extra' => $report->getAsSerializableErrorTree(),
 		);
+
+		if ($sendFullData) {
+			$data['extra'] = $report->getContext();
+		}
 
 		$this->client->capture($data, $stack);
 
@@ -81,7 +85,7 @@ class SentryReportLogHandler extends AbstractLogHandler {
 		if (!file_exists($logdir)) {
 			@mkdir($logdir, 0777, true);
 		} else {
-			touch($logdir);
+			@touch($logdir);
 		}
 	}
 
@@ -89,6 +93,6 @@ class SentryReportLogHandler extends AbstractLogHandler {
 		if (!file_exists($logdir)) return 0;
 
 		// There is no need to scan timestamps of all files, since the directory's timestamp gets updated automatically
-		return filemtime($logdir);
+		return @filemtime($logdir);
 	}
 }

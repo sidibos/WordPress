@@ -164,6 +164,10 @@ final class Logger extends \Psr\Log\AbstractLogger {
 			$page_type = PHP_SAPI == 'cli' || self::isAjaxRequest() ? self::PAGE_TYPE_TEXT : self::PAGE_TYPE_HTML;
 		}
 
+		if (!$raven_client) {
+			$raven_client = new \Raven_Client(self::getDefaultSentryDSN());
+		}
+
 		if ($raven_client && defined('PROJECT_NAMESPACE')) {
 			$raven_client->extra_context(array('PROJECT_NAMESPACE' => PROJECT_NAMESPACE));
 		}
@@ -181,6 +185,15 @@ final class Logger extends \Psr\Log\AbstractLogger {
 		}
 
 		return self::$global_logger = $logger;
+	}
+
+	private static function getDefaultSentryDSN() {
+		$env_DSN = getenv("SENTRY_DSN");
+		if ($env_DSN) {
+			return $env_DSN;
+		} else {
+			return 'https://11c331ebbaf34627b4fc0391a4fbab6b:758a8c176d674f00b5af4eefafd2d489@app.getsentry.com/50675';
+		}
 	}
 
 	private static function getDefaultHandlers($page_type, $raven_client) {
@@ -403,14 +416,15 @@ final class Logger extends \Psr\Log\AbstractLogger {
 		$this->log($log->getSeverity(), $log);
 	}
 
-	public function _phpExceptionHandlerCallback(\Exception $e) {
+	public function _phpExceptionHandlerCallback($e) {
+		assert('$e instanceof \\Exception || $e instanceof \\Throwable');
 
 		// All uncaught exceptions have alert severity, because that stops execution
 		// & needs to be higher than level for regular PHP errors
 		$this->logExceptionFrom($e, LogLevel::ALERT, 'uncaught exception');
 	}
 
-	private function logExceptionFrom(\Exception $e, $severity, $source) {
+	private function logExceptionFrom($e, $severity, $source) {
 		if (null === $severity) {
 			if ($e instanceof \ErrorException) {
 				$severity = self::severityForPhpError($e->getSeverity()); // ErrorException's severity is not PSR

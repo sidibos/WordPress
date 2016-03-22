@@ -451,10 +451,10 @@ class ErrorLog {
 		$shortmsg = ($a = strpos($errstr, "occured in query")) ? substr($errstr, 0, $a) : $errstr;
 		$shortmsg = preg_replace("/\[\<.*\>\]/U", "", $shortmsg);
 		$shortmsg = preg_replace_callback("/\([^()]{30,300}\)/u", function($m){
-			if (strlen($m[0]) > 50) {
-				return substr($m[0], 0, 20).'…'.substr($m[0], -25);
+			if (mb_strlen($m[0]) > 50) {
+				return mb_substr($m[0], 0, 20).'…'.mb_substr($m[0], -25);
 			}
-			return '('.substr($m[0], -25);
+			return '('.mb_substr($m[0], -25);
 		}, $shortmsg);
 
 
@@ -898,9 +898,6 @@ class ErrorLog {
 	 */
 	function getTags() {
 		$tags = isset($this->ed['Error handling']['tags']) ? $this->ed['Error handling']['tags'] : array();
-		if (is_array($tags) && isset($tags['noreport'], $tags['tolerance'])) { // emulates behaviour of old logger which ignored eh:noreport
-			unset($tags['noreport']);
-		}
 		return $tags;
 	}
 
