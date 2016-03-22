@@ -14,7 +14,8 @@ if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROO
 function include_all_php($folder){
     foreach (glob("{$folder}/*.php") as $filename)
     {
-        include $filename;
+        if(is_file($filename) && file_exists($filename)) include $filename;
+	else if(is_file($filename)) die($filename);
     }
 }
 
