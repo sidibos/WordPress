@@ -19,7 +19,6 @@
         "ftlabs/content-api": "~1.0.0",
         "ftlabs/helpers": "~1.0.0",
         "ftlabs/http": "~2.2.1",
-        "ftlabs/memcache": "~1.0.0",
         "ftlabs/mysql": "5.*",
         "ftlabs/logger": "~1.52",
         "pusher/pusher-php-server": "^2.2",

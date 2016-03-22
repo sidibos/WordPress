@@ -4,8 +4,8 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
         "This file is @generated automatically"
     ],
-    "hash": "72297fcec053f52dddfa54ee77da70c8",
-    "content-hash": "1af30501572b3792e8f5506870bc1958",
+    "hash": "22b3200e8e6f52b53072c7753e36a4a9",
+    "content-hash": "1ffb9bb2f64f62e58dfa95d1587d3cf6",
     "packages": [
         {
             "name": "ftlabs/auth",
