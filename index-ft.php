@@ -11,15 +11,21 @@ if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROO
 //require_once(__DIR__ . '/vendor/autoload.php');
 //require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 
-function include_all_php($folder){
-    foreach (glob("{$folder}/*.php") as $filename)
-    {
-        if(is_file($filename) && file_exists($filename)) include $filename;
-	else if(is_file($filename)) die($filename);
-    }
+$dir = $_SERVER['DOCUMENT_ROOT'] . "/vendor";
+$dh  = opendir($dir);
+$dir_list = array($dir);
+while (false !== ($filename = readdir($dh))) {
+    if($filename!="."&&$filename!=".."&&is_dir($dir.$filename))
+        array_push($dir_list, $dir.$filename."/");
+}
+foreach ($dir_list as $dir) {
+    foreach (glob($dir."*.php") as $filename)
+        require_once $filename;
 }
 
-include_all_php($_SERVER['DOCUMENT_ROOT'] . "/vendor");
+print_r($dir_list);die;
+
+//include_all_php($_SERVER['DOCUMENT_ROOT'] . "/vendor");
 
 if(!class_exists('FTLabs\Logger')){
 die($_SERVER['DOCUMENT_ROOT'].'/vendor');
