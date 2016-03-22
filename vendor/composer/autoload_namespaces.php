@@ -10,6 +10,5 @@ return array(
     'SimplePie' => array($vendorDir . '/simplepie/simplepie/library'),
     'Raven_' => array($vendorDir . '/raven/raven/lib'),
     'Psr\\Log\\' => array($vendorDir . '/psr/log'),
-    'Michelf' => array($vendorDir . '/michelf/php-markdown'),
     'FTLabs' => array($vendorDir . '/ftlabs/exception/src', $vendorDir . '/ftlabs/logger/src', $vendorDir . '/ftlabs/http/src', $vendorDir . '/ftlabs/mysql/src'),
 );
