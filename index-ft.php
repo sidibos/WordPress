@@ -10,28 +10,11 @@ if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROO
 
 //require_once(__DIR__ . '/vendor/autoload.php');
 //require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
-/*
-$dir = $_SERVER['DOCUMENT_ROOT'] . "/vendor";
-if(!is_dir($dir)){
-  echo 'is not a dir '.$dir;die;
-} 
-$dh  = opendir($dir);
-$dir_list = array($dir);
-while (false !== ($filename = readdir($dh))) {
-    if($filename!="."&&$filename!=".."&&is_dir($dir.$filename))
-        array_push($dir_list, $dir.$filename."/");
-}
-foreach ($dir_list as $dir) {
-    foreach (glob($dir."*.php") as $filename)
-        require_once $filename;
-}
-*/
 
-//include_all_php($_SERVER['DOCUMENT_ROOT'] . "/vendor");
 
 
 // Initialise the FTLabs logger for nicer dev errors, but disable reporting to the Labs system
-i//$logger = FTLabs\Logger::init();
+//$logger = FTLabs\Logger::init();
 //$logger->setHandlerMinSeverity('report', \Psr\Log\LogLevel::EMERGENCY);
 
 require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
