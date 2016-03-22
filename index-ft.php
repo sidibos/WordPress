@@ -21,8 +21,11 @@ function include_all_php($folder){
 
 include_all_php($_SERVER['DOCUMENT_ROOT'] . "/vendor");
 
+if(!class_exists('FTLabs\Logger')){
+die($_SERVER['DOCUMENT_ROOT'].'/vendor');
+}
 // Initialise the FTLabs logger for nicer dev errors, but disable reporting to the Labs system
-$logger = \FTLabs\Logger::init();
+$logger = FTLabs\Logger::init();
 $logger->setHandlerMinSeverity('report', \Psr\Log\LogLevel::EMERGENCY);
 
 require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
