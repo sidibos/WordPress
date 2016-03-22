@@ -8,7 +8,7 @@
 //set CORE_PATH for heroku
 if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
 
-require_once(__DIR__ . '/vendor/autoload.php');
+//require_once(__DIR__ . '/vendor/autoload.php');
 //require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 
 // Initialise the FTLabs logger for nicer dev errors, but disable reporting to the Labs system
