@@ -7,6 +7,9 @@
 
 require( ABSPATH . WPINC . '/option.php' );
 
+//load external lib
+require_once($_SERVER['DOCUMENT_ROOT'].'/vendor/autoload.php');
+
 /**
  * Convert given date string into a different format.
  *
