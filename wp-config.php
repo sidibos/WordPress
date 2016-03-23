@@ -108,7 +108,7 @@ if(!isset($_SERVER['COREFTCO'])) $_SERVER['COREFTCO'] = $_SERVER['DOCUMENT_ROOT'
 require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
 
 //load external lib
-require_once(realpath(dirname(__FILE__)).'/vendor/autoload.php');
+//require_once(realpath(dirname(__FILE__)).'/vendor/autoload.php');
 
 /** Sets up WordPress vars and included files. */
 require_once(ABSPATH . 'wp-settings.php');
