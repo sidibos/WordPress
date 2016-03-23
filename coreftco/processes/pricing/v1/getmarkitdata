@@ -1,0 +1,161 @@
+#!/usr/bin/php
+<?php
+/**
+ * MarkIT supplies CDS data in downloadable Tab-delimited zip files.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['COREFTCO']."/processes/global";
+require_once $_SERVER['COREFTCO']."/helpers/pricing/v1/pricing";
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+
+$basedata = array(
+	'username' => 'FT',
+	'password' => 'london',
+	'report'   => 'SAME_DAY_INDICES',
+	'type'     => 'Credindex',
+	'date'     => date('Ymd'),
+	'format'   => 'tab',
+	'version'  => 4
+);
+$primarykey = "indexid";
+$families = array("ITRAXX-ASIA","ITRAXX-EUROPE","CDX","ITRAXX-SOVX");
+
+$results = array();
+
+$logger = new AssankaLoggerV1('getmarkitdata');
+$logger->setLogMethod('file');
+$logger->setInstanceVariables(array('v' => 1));
+$logger->write(array('msg' => 'Downloading MarkIT data'));
+
+// Download fresh files from MarkIT
+foreach ($families as $family) {
+	$logger->write(array('downloading' => $family));
+	$data = array_merge($basedata, array('family' => $family));
+
+	$http = new HTTPRequest("https://www.markit.com/export.jsp");
+	$http->setMethod('POST');
+	$http->set($data);
+	try {
+		$resp = $http->send();
+		if ($resp->getResponseStatusCode() != 200 or strlen($resp->getBody()) < 500) {
+			$logger->write(array('exception'=>'badresponse', 'family' => $family, 'resp' => $resp->getResponse(), 'respcode'=>$resp->getResponseStatusCode()));
+			continue;
+		}
+		$response = $resp->getBody();
+	} catch (Exception $e) {
+		$logger->write(array('exception'=>$e->getMessage()));
+		continue;
+	}
+
+	// Response is Zip compressed data - write to temp file and unzip
+	$tabdata = "";
+	file_put_contents($_SERVER['COREFTCO']."/tmp/markit_download_compressed", $response);
+	$files = shell_exec('cd '.escapeshellarg($_SERVER['COREFTCO']."/tmp")."; unzip -o markit_download_compressed");
+	$files = explode("\n", $files);
+	foreach ($files as $file) {
+		if (preg_match("/^\s*inflating:?\s*((.+?)(\.tab)?)\s*$/i", $file, $m)) {
+			if (!empty($m[3])) $tabdata = file_get_contents($_SERVER['COREFTCO']."/tmp/".$m[1]);
+		}
+	}
+
+	// Interpret TAB-delimited data
+	$tabdata = str_replace(array("\r\n", "\n\r", "\r"), "\n", $tabdata);
+	$lines = explode("\n", $tabdata);
+	$keys = $data = array();
+	foreach ($lines as $line) {
+		if (strpos($line, "\t") === false) continue;
+		if (!$keys) {
+			$keys = explode("\t", strtolower(str_replace(" ", "", trim($line))));
+		} else {
+			$linedata = explode("\t", trim($line));
+			$prikeyval = false;
+			$data = array();
+			for ($i = (sizeof($linedata) - 1); $i >= 0; --$i) {
+				$data[$keys[$i]] = $linedata[$i];
+				if ($keys[$i] == $primarykey) $prikeyval = $linedata[$i];
+			}
+
+			if ($prikeyval) {
+
+				// Ignore any rows that are not end-of-day batches for specified symbols
+				if (strpos($prikeyval, 'CDX-') !== false and (empty($data['batch']) or $data['batch'] != 'NY1930')) continue;
+				if (strpos($prikeyval, 'ITRAXX-') !== false and (empty($data['batch']) or $data['batch'] != 'LN1930')) continue;
+
+				$results[$prikeyval] = $data;
+			}
+		}
+	}
+}
+
+// Parse the data and update the database accordingly
+foreach ($results as $key => &$new) {
+
+	// Format data for database
+	$new['date']            = Common::ConvertHumanTime($new['date'])->format('Y-m-d');
+	$new['maturity']        = Common::ConvertHumanTime($new['maturity'])->format('Y-m-d');
+	$new['compositeprice']  = (empty($new['compositeprice'])) ? null : round($new['compositeprice'] * 100, 2);
+	$new['modelprice']      = (empty($new['modelprice'])) ? null : round($new['modelprice'] * 100, 2);
+	$new['compositespread'] = (empty($new['compositespread'])) ? null : round($new['compositespread'] * 10000, 2);
+	$new['modelspread']     = (empty($new['modelspread'])) ? null : round($new['modelspread'] * 10000, 2);
+
+	// The symbol id is the symbol with the version and series number removed
+	// e.g. ITRAXX-FINSUBS12V1-10Y becomes ITRAXX-FINSUB-10Y
+	// Some symbols lack the first delimiter.  Fix this for known series
+	$new['indexid'] = preg_replace('/^(CDX|ITRAXX)(\w)/i', '$1-$2', $new['indexid']);
+	if (!preg_match('/^(.*?\-.*?)S\d{1,3}V\d{1,3}(-\d\d?Y)$/', $new['indexid'], $matches)) {
+		$logger->write(array('msg'=>'unrecognised-index', 'indexid'=>$new['indexid']));
+		continue;
+	}
+
+	$id = $matches[1].$matches[2];
+
+	// Get the existing record from the database for this id.
+	$old_data = $dbwrite->queryRow('SELECT indexid, previndexid, date, compositeprice, modelprice, compositespread, modelspread, downloadtime FROM markit_data WHERE id=%s', $id);
+
+	// Prepare query string and update array
+	// We will always update compositeprice, modelprice, compositespread, and modelspread
+	$querystr = '{name}, {term}, {indexid}, {compositeprice}, {modelprice}, {compositespread}, {modelspread}, {maturity}, {date}, downloadtime=NOW(), validuntil=(NOW()+INTERVAL 1 DAY)';
+
+	$update['id']              = $id;
+	$update['name']            = $new['name'];
+	$update['term']            = $new['term'];
+	$update['indexid']         = $new['indexid'];
+	$update['compositeprice']  = $new['compositeprice'];
+	$update['modelprice']      = $new['modelprice'];
+	$update['compositespread'] = $new['compositespread'];
+	$update['modelspread']     = $new['modelspread'];
+	$update['maturity']        = $new['maturity'];
+	$update['date']            = $new['date'];
+
+
+	// Does the symbol already exist in the database?
+	if ($old_data) {
+
+		// Has the indexid changed?
+		if ($old_data['indexid'] != $new['indexid']) {
+
+			// If the indexid has changed, previous data is cleared
+			$querystr .= ', {previndexid}, {prevcompositeprice}, {prevmodelprice}, {prevcompositespread}, {prevmodelspread} ';
+			$update['previndexid']         = $old_data['indexid'];
+			$update['prevcompositeprice']  = null;
+			$update['prevmodelprice']      = null;
+			$update['prevcompositespread'] = null;
+			$update['prevmodelspread']     = null;
+
+		// If the indexid has not changed, check if the date has changed
+		} elseif ($old_data['date'] != $new['date']) {
+
+			// If the date has changed we need to update the prev data
+			$querystr .= ', {prevcompositeprice}, {prevmodelprice}, {prevcompositespread}, {prevmodelspread} ';
+			$update['prevcompositeprice']  = $old_data['compositeprice'];
+			$update['prevmodelprice']      = $old_data['modelprice'];
+			$update['prevcompositespread'] = $old_data['compositespread'];
+			$update['prevmodelspread']     = $old_data['modelspread'];
+		}
+	}
+
+	$dbwrite->query('INSERT INTO markit_data SET {id}, '.$querystr . ' ON DUPLICATE KEY UPDATE '. $querystr, $update);
+}

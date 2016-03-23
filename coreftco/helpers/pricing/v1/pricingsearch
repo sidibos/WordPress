@@ -1,0 +1,118 @@
+<?php
+/**
+ * Pricing search
+ *
+ * Searches WSOD API for a supplied company name or symbol, and
+ * returns results as PricingQuote objects via an Iterator
+ * interface.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once __DIR__.'/pricing';
+require_once $_SERVER['CORE_PATH'].'/helpers/http/HTTPRequest';
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+
+class PricingSearchV1 implements Iterator, Countable {
+
+	private $issuetype, $query, $cnt, $ckey, $populatepricing;
+	private $issuetypes = array('IN', 'EQ', 'ETF', 'MF');
+	private $results = array();
+
+	/**
+	 * Create a new search for the given name or symbol
+	 *
+	 * @param string $searchstring   The symbol or entity name to search for
+	 * @return PricingSearch
+	 */
+	public function __construct($searchstring) {
+		$this->query = trim($searchstring);
+		$this->issuetype = 'EQ';
+		$this->populatepricing = false;
+		$this->logger = new AssankaLoggerV1('pricingsearch');
+		$this->logger->setLogMethod('file');
+		$this->logger->setInstanceVariables(array('v' => 1, 'q' => $searchstring));
+	}
+
+	/**
+	 * Perform the search
+	 *
+	 * Execute the search against the MIOD API.
+	 */
+	public function setIssueType($issuetype){
+		if (!in_array($issuetype, $this->issuetypes)) return false;
+		$this->issuetype = $issuetype;
+		return true;
+	}
+
+	/**
+	 * Determines whether the PricingQuotes found by the search will contain a full set of data
+	 *
+	 * By default, the search will return an existing PricingQuote if one is available
+	 * in the object cache, and will create one with just a name and a symbol (and unknown
+	 * validity) if not.  By setting populatepricing, the search will force all
+	 * PricingQuote result objects to contain full data, though they will not be
+	 * refreshed if there is already full data available in memcache.
+	 *
+	 * @param bool $newval Whether to use live pricing in results (default true)
+	 */
+	public function populatePricing($newval=true) {
+		$this->populatepricing = ($newval==true);
+	}
+
+	/**
+	 * Perform the search
+	 *
+	 * Execute the search against the Wall St On Demand API.
+	 *
+	 * @return integer  Number of matching symbols found
+	 */
+	public function find(){
+		$this->results = array();
+
+		$url = 'http://markets.ft.wallst.com/ft/symbolSearch/data/getSymbols.asp?q=' . urlencode($this->query) . '&issueType=' . urlencode($this->issuetype) . '&callback=callback&context=context';
+		$http = new HTTPRequest($url);
+		$http->setTimeLimit(20);
+		$http->setMaxRetries(1);
+		try {
+			$resp = $http->send();
+			if ($resp->getResponseStatusCode() !== 200) throw new Exception('HTTP '.$resp->getResponseStatusCode());
+
+			// Strip JSONP to leave raw JSON data (actual JSON data is the second of three arguments)
+			$data = preg_replace("/[^(]+\(\"[^\"]*\", (.*), (true|false)\)\;\s*$/i", "$1", $resp->getBody());
+			$data = json_decode($data, true);
+			if (empty($data) or !is_array($data)) throw new Exception('No data received');
+		} catch (Exception $e) {
+			$this->logger->write(array('exception'=>$e->getMessage()));
+			return 0;
+		}
+
+		// Store all the matching results
+		foreach($data[0] as $match) {
+
+			// Load the quote for the matching symbol from object cache
+			$populatemode = ($this->populatepricing) ? PricingV1::POPULATE_CACHEFIRST : PricingV1::POPULATE_EMPTY;
+			$this->results[$match['w']] = Pricing::getQuote("WSODISSUE:".$match['w'], $populatemode);
+
+			// If the entry has no name (because it is not available in the cache), pre-fill with the basics from the search result dataset.
+			if (!$this->results[$match['w']]->get('meta', 'name')) {
+				$this->results[$match['w']]->set('meta', 'name', $match['n']);
+			}
+		}
+		$this->cnt = count($this->results);
+		$this->logger->write(array('results'=>$this->cnt, 'resptime'=>$resp->getResponseTime()));
+		return $this->cnt;
+	}
+
+	// Implementation of Iterator
+	public function current() { return ($this->valid()) ? $this->results[$this->ckey] : null; }
+	public function next() { next($this->results); $this->ckey = key($this->results); return $this->current(); }
+	public function key() { return $this->ckey; }
+	public function valid() { return array_key_exists($this->ckey, $this->results); }
+	public function rewind() { reset($this->results); $this->ckey = key($this->results); }
+
+	// Implementation of Countable
+	public function count() { return $this->cnt; }
+}
+
+if (!class_exists('PricingSearch')) class_alias('PricingSearchV1', 'PricingSearch');

@@ -102,7 +102,7 @@ if ( !defined('ABSPATH') )
 //set CORE_PATH for heroku
 if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
 //set COREFTCO path
-if(!isset($_SERVER['COREFTCO'])) $_SERVER['COREFTCO'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
+if(!isset($_SERVER['COREFTCO'])) $_SERVER['COREFTCO'] = $_SERVER['DOCUMENT_ROOT'].'/coreftco';
 
 
 require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";

@@ -1,0 +1,39 @@
+<?php
+/**
+ * An Interface for classes that implement key value functions
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+interface KeyValueAccessInterface {
+
+	/**
+	 * Gets the value for a given key.
+	 *
+	 * @param string $key The key to retrieve
+	 *
+	 * @return mixed Return null if the key isn't available
+	 */
+	public function get($key);
+
+	/**
+	 * Check to see if a value is already set for the given key.
+	 *
+	 * @param string $key The key to check if set
+	 * @return mixed boolean True if set, false if not
+	 */
+	public function exists($key);
+
+	/**
+	 * Store a given key/value pair
+	 *
+	 * @param string  $key   The key to store a value against
+	 * @param mixed   $value The value to store - pass null in to delete where possible
+	 * @param integer $ttl   Optional TTL
+	 *
+	 * @return void
+	 */
+	public function set($key, $value, $ttl = null);
+
+}

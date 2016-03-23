@@ -1,0 +1,36 @@
+#!/usr/bin/php
+<?php
+/**
+ * Creates and forces the refresh of a PricingQuote for the specified symbol.
+ *
+ * This will always retrieve the data from the WSOD API if a
+ * WSOD symbol is supplied.  If a MarkIT symbol is supplied, will refresh
+ * the data from the MarkIT cache, or regenerate the MarkIT cache if it
+ * has expired.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['COREFTCO']."/helpers/pricing/v1/pricing";
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+require_once $_SERVER['CORE_PATH'].'/helpers/memcache/v1/memcacheaccess';
+
+if (empty($_SERVER['argv'][1])) exit('Usage: updatepricing <symbol>\n');
+$symbol = $_SERVER['argv'][1];
+$safesymbol = str_replace(' ', '_', $symbol);
+
+$logger = new AssankaLoggerV1('updatepricing');
+$logger->setLogMethod('file');
+$logger->setInstanceVariables(array('v' => '1', 'symbol' => $symbol));
+
+$mc = MemcacheAccessV1::getMemcache();
+if ($mc->get('pricingupdate_'.$safesymbol)) {
+	$logger->write(array('msg'=>'update-in-progress'));
+	exit("updatepricing:".$symbol.": This symbol is already being updated\n");
+}
+
+$logger->write(array('msg'=>'updated'));
+$mc->set('pricingupdate_'.$safesymbol, 1, 10);
+PricingV1::getQuote($_SERVER['argv'][1], Pricing::POPULATE_LIVE);
+$mc->delete('pricingupdate_'.$safesymbol);
