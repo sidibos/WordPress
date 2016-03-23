@@ -99,5 +99,13 @@ define('WP_DEBUG', false);
 if ( !defined('ABSPATH') )
 	define('ABSPATH', dirname(__FILE__) . '/');
 
+//set CORE_PATH for heroku
+if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
+
+require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
+
+//load external lib
+require_once(realpath(dirname(__FILE__)).'/vendor/autoload.php');
+
 /** Sets up WordPress vars and included files. */
 require_once(ABSPATH . 'wp-settings.php');

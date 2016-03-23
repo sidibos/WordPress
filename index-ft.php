@@ -5,8 +5,6 @@
  * @codingstandard ftlabs-phpcs
  * @copyright The Financial Times Limited [All rights reserved]
  */
-//set CORE_PATH for heroku
-if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
 
 //require_once(__DIR__ . '/vendor/autoload.php');
 //require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
@@ -17,7 +15,6 @@ if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROO
 //$logger = FTLabs\Logger::init();
 //$logger->setHandlerMinSeverity('report', \Psr\Log\LogLevel::EMERGENCY);
 
-require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
 
 error_reporting(error_reporting() ^ E_STRICT ^ E_DEPRECATED ^ E_NOTICE);
 
