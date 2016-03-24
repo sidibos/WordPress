@@ -24,3 +24,4 @@ function include_all_php($folder){
 	}
 }
 
+require_once $vendor.'/ftlabs/logger/src/FTLabs/Logger.php';
