@@ -9,7 +9,7 @@ Author URI: http://assanka.net/
 */
 
 
-require_once $_SERVER['COREFTCO'].'/helpers/cacheability/cacheability';
+require_once $_SERVER['COREFTCO'].'/helpers/cacheability/v1/cacheability';
 require_once dirname(__FILE__).'/assanka_web_chat_emoticon.php';
 
 class Assanka_Webchat {
