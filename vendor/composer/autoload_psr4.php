@@ -5,6 +5,13 @@
 $vendorDir = dirname(dirname(__FILE__));
 $baseDir = dirname($vendorDir);
 
-return array(
+/*return array(
     'FTLabs\\' => array($vendorDir . '/ftlabs/memcache/src', $vendorDir . '/ftlabs/helpers/src', $vendorDir . '/ftlabs/auth/src', $vendorDir . '/ftlabs/content-api/src'),
+);*/
+return array(
+	'FTLabs\\Memcache\\' => array($vendorDir . '/ftlabs/memcache/src'),
+	'FTLabs\\Helpers\\' =>array($vendorDir . '/ftlabs/helpers/src'),
+	'FTLabs\\Auth\\' =>array($vendorDir . '/ftlabs/auth/src'),
+	'FTLabs\\ContentAPI\\' =>array($vendorDir . '/ftlabs/content-api/src'),
+	'FTLabs\\Logger\\' => array($vendorDir . '/ftlabs/logger/src')
 );
