@@ -7,7 +7,7 @@
  */
 
 //require_once(__DIR__ . '/vendor/autoload.php');
-require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/lib/autoload.php';
 require_once($_SERVER['DOCUMENT_ROOT'].'/load-dependency.php');
 
 

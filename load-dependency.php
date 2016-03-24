@@ -1,6 +1,6 @@
 <?php
 
-$vendor = require_once($_SERVER['DOCUMENT_ROOT'].'/vendor');
+$vendor = require_once($_SERVER['DOCUMENT_ROOT'].'/lib');
 
 $dependencies = [
 	$vendor.'/ftlabs/logger/src/FTLabs',
