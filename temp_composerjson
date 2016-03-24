@@ -2,7 +2,7 @@
     "config": {
        "secure-http": false,
        "github-oauth": {
-         "github.com": "c525aafaf3c5775b3a3c83e0ce797ca238c5f3e7"
+         "github.com": "439cd1a6a8e22bca94c5da1c31ad391dc1f075a0"
        }
     },
     "name": "ft/blogs",
