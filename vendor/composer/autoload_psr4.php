@@ -6,5 +6,5 @@ $vendorDir = dirname(dirname(__FILE__));
 $baseDir = dirname($vendorDir);
 
 return array(
-    'FTLabs\\' => array($baseDir . '/', $vendorDir . '/ftlabs/memcache/src', $vendorDir . '/ftlabs/helpers/src', $vendorDir . '/ftlabs/auth/src', $vendorDir . '/ftlabs/content-api/src',$vendorDir . '/ftlabs/logger/src'),
+    'FTLabs\\' => array($vendorDir . '/ftlabs/memcache/src', $vendorDir . '/ftlabs/helpers/src', $vendorDir . '/ftlabs/auth/src', $vendorDir . '/ftlabs/content-api/src'),
 );
