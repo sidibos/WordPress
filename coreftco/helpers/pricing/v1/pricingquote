@@ -1,0 +1,325 @@
+<?php
+/**
+ * Price a financial instrument using either MarkIT or WSOD APIs
+ *
+ * Stores a quote and additional information about a single company,
+ * stock, bond, fund or other financial instrument with a symbol.
+ * Downloads data from WSOD and the MarkIT data cache as required.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once __DIR__.'/pricing';
+require_once $_SERVER['CORE_PATH'].'/helpers/database/mysql/v4/connection';
+require_once $_SERVER['CORE_PATH'].'/helpers/memcache/v1/memcacheaccess';
+require_once $_SERVER['CORE_PATH'].'/helpers/http/HTTPRequest';
+require_once $_SERVER['CORE_PATH'].'/helpers/logger/v1/logger';
+
+class PricingQuoteV1 {
+
+	private $data, $mc, $symbol, $safesymbol, $logger;
+
+	const CACHE_TTL = 1200;
+	const DATA_TTL = 60;
+	const SYMBPAT_MARKIT = '/^CDX|ITRAXX\-/i';
+	const WSODISSUE = 'WSODISSUE:';
+	const VALIDITY_VALID = 1, VALIDITY_UNKNOWN = 2, VALIDITY_INVALID = 3;
+
+	/**
+	 * Create a new PricingQuote for a specified symbol
+	 *
+	 * For performance, prefer Pricing::getQuote, rather than constructing this object directly.
+	 *
+	 * @param string $symbol The symbol for this quote
+	 * @return PricingQuote
+	 */
+	public function __construct($symbol) {
+		$this->symbol = trim($symbol);
+		$this->safesymbol = str_replace(' ', '_', $this->symbol);
+		$this->mc = MemcacheAccessV1::getMemcache();
+		$this->data = array(
+			'meta'=>array(
+				'validity'=>self::VALIDITY_UNKNOWN,
+				'symbol'=>$this->symbol,
+				'downloadtime'=>null,
+				'validuntil'=>time(),
+				'ttl'=>0,
+				'name'=>null
+			)
+		);
+		$this->logger = new AssankaLoggerV1('pricingquote');
+		$this->logger->setLogMethod('file');
+		$this->logger->setInstanceVariables(array('v' => 1, 'symbol' => $symbol));
+	}
+
+	/**
+	 * Fetch data and populate the quote from cache
+	 *
+	 * Populates the quote with data from memcache, if available.  If not available, calls self::refresh() to retrieve data from the remote service.  If *valid* data is available from memcache but is older than DATA_TTL, then the existing data is used, and an update process is spawned in the background to update the data.   If the symbol is invalid, it will not be refreshed in the background and will continue to be served as invalid from the cache until CACHE_TTL expires.
+	 *
+	 * @return bool  Whether the class was successfully populated with data
+	 */
+	public function fetch() {
+		$data = $this->mc->get('pricingquote_'.$this->safesymbol);
+		if ($data and is_array($data)) {
+			$this->data = self::mergeData($this->data, $data);
+			$this->data['meta']['ttl'] = max(0, $this->data['meta']['validuntil'] - time());
+			if ($this->data['meta']['ttl'] == 0 and !$this->mc->get('pricingupdate_'.$this->safesymbol)) {
+				$cmd = 'COREFTCO='.$_SERVER['COREFTCO'].' CORE_PATH='.$_SERVER['CORE_PATH'].' nohup nice -n 19 '.$_SERVER['COREFTCO'].'/processes/pricing/v1/updatepricing '.escapeshellarg($this->symbol);
+				$this->logger->write(array(
+					'evt' => 'async-update',
+					'cmd' => $cmd
+				));
+				$cmd = $cmd.' > /dev/null 2>&1 &';
+				pclose(popen($cmd, 'r'));
+			}
+			return ($this->data['meta']['validity'] == self::VALIDITY_VALID);
+		}
+		return (bool)$this->refresh();
+	}
+
+	/**
+	 * Refresh the quote
+	 *
+	 * Connect to WSOD or the local aggregated MarkIT data cache and extract updated data for the quote.  Can be called directly if you wish to bypass the PricingQuote's built in memcache caching.   Stores its result in memcahce automatically, including if the symbol is not found on the remote service.
+	 *
+	 * @return bool   Whether the symbol is valid on the remote service
+	 */
+	public function refresh() {
+		if (preg_match(self::SYMBPAT_MARKIT, $this->symbol)) {
+
+			$db = new MysqlConnectionV4("dbmaster", "write", "anyermepsptp", "ftco_oac");
+
+			$markit_data = $db->queryRow('SELECT * FROM markit_data WHERE id=%s', $this->symbol);
+
+			if ($markit_data == false) {
+				$this->data['meta']['validity'] = self::VALIDITY_INVALID;
+				$this->data['meta']['validuntil'] = time() + self::CACHE_TTL;
+			} else {
+
+				// Add in the changes
+				$keys = array('compositeprice', 'compositespread', 'modelprice', 'modelspread');
+				foreach ($keys as $key) {
+					if ($markit_data['prev'.$key] !== null and $markit_data[$key] !== null) {
+						$markit_data['chg_'.$key] = round($markit_data[$key] - $markit_data['prev'.$key], 3);
+						$markit_data['chgpct_'.$key] = number_format(($markit_data['chg_'.$key] / $markit_data['prev'.$key]) * 100, 3) . '%';
+						if ($markit_data['chg_'.$key] > 0) {
+							$markit_data['chg_'.$key] = '+'.abs($markit_data['chg_'.$key]);
+							$markit_data['chgpct_'.$key] = '+'.abs($markit_data['chgpct_'.$key]);
+						} elseif ($markit_data['chg_'.$key] < 0) {
+							$markit_data['chg_'.$key] = '-'.abs($markit_data['chg_'.$key]);
+							$markit_data['chgpct_'.$key] = '-'.abs($markit_data['chgpct_'.$key]);
+						} else {
+							$markit_data['chg_'.$key] = $markit_data['chgpct_'.$key] = '0';
+						}
+					} else {
+						$markit_data['chg_'.$key] = 'n/a';
+						$markit_data['chgpct_'.$key] = 'n/a';
+					}
+				}
+
+				$this->data['meta']['validity'] = self::VALIDITY_VALID;
+				$this->data['data'] = $markit_data;
+				$this->data['meta']['name'] = $markit_data['name'];
+				$this->data['meta']['validuntil'] = $markit_data['validuntil'];
+			}
+			$this->data['meta']['readtime'] = time();
+			$this->data['meta']['downloadtime'] = time();
+
+		} else {
+			$qrysymb = (strpos($this->symbol, self::WSODISSUE) === 0) ? substr($this->symbol, strlen(self::WSODISSUE)) : $this->symbol;
+			$http = new HTTPRequest('http://markets.ft.wallst.com/APIs/iPhone/V2.0/Quotes.asp?symbol=' . rawurlencode($qrysymb));
+			$http->setTimeLimit(4);
+			$http->setMaxRetries(1);
+			$logdata = array('evt'=>'refresh');
+			try {
+				$resp = $http->send();
+				if ($resp->getResponseStatusCode() !== 200) throw new Exception('HTTP '.$resp->getResponseStatusCode());
+				$logdata['resptime'] = $resp->getResponseTime();
+				$response = $resp->getData('json');
+			} catch (Exception $e) {
+				$logdata['exception'] = $e->getMessage();
+				$response = null;
+			}
+
+			// Invalid response
+			if (empty($response) or !is_array($response)) {
+
+				// If good data is available in the cache that is still valid, don't invalidate it
+				$prev = $this->mc->get('pricingquote_'.$this->safesymbol);
+				if ($prev and (!isset($prev['meta']) or !isset($prev['meta']['validity']) or $prev['meta']['validity'] == self::VALIDITY_VALID)) {
+					return false;
+				}
+
+				$this->data['meta']['downloadtime'] = time();
+				$this->data['meta']['validity'] = self::VALIDITY_INVALID;
+				$this->data['meta']["validuntil"] = (time() + self::CACHE_TTL);
+
+			// Valid reponse
+			} else {
+				$this->data['meta']['downloadtime'] = time();
+				$this->mc->set('pricing_last_miod_download_time', $this->data['meta']['downloadtime'], (60 * 60 * 24 * 30));
+				$this->data = self::mergeData($this->data, self::lowercaseKeys($response));
+				$this->data['meta']['validity'] = self::VALIDITY_VALID;
+				$this->data['meta']['validuntil'] = (time() + self::DATA_TTL);
+			}
+
+			// Add extra derived data for convenience
+			if (isset($this->data['snapshot']['change'])) {
+				$this->data['snapshot']['chgdir'] = 'unchanged';
+				$chg = $this->data['snapshot']['change'];
+				if ($chg > 0) $this->data['snapshot']['chgdir'] = 'up';
+				if ($chg < 0) $this->data['snapshot']['chgdir'] = 'down';
+			}
+
+			if (isset($this->data['companyinfo']['name'])) {
+				$this->data['meta']['name'] = $this->data['companyinfo']['name'];
+			}
+		}
+
+		// Store
+		$this->data['meta']['ttl'] = $this->data['meta']['validuntil'] - time();
+		$this->mc->set('pricingquote_'.$this->safesymbol, $this->data, self::CACHE_TTL);
+		return ($this->data['meta']['validity'] == self::VALIDITY_VALID);
+	}
+
+	/**
+	 * Gets the current validity of the quote
+	 *
+	 * Quotes that have been retrieved from the relevant API (WSOD or MarkIT) will have a validity of PricingQuote::VALIDITY_VALID or PricingQuote::VALIDITY_INVALID, depending upon whether the symbol exists on the remote service.  If the PricingQuote was created empty, then the PricingQuote has no way of knowing whether it is valid or not, so in such cases this method will return PricingQuote::VALIDITY_UNKNOWN
+	 *
+	 * @return int   Validity of the quote (use constants for clarity)
+	 */
+	public function getValidity() {
+		return $this->data['meta']['validity'];
+	}
+
+	/**
+	 * Fetch the symbol for this PricingQuote
+	 *
+	 * @return string   This pricing quote's symbol, defined when the PricingQuote was constructed
+	 */
+	public function getSymbol() {
+		return $this->symbol;
+	}
+
+	/**
+	 * Sets a value within the PricingQuote
+	 *
+	 * The value is set for this execution of the script but is not stored in memcache so is not persistent.  The meta data group cannot be set.
+	 *
+	 * @param string $group Group in which to save the new/updated data
+	 * @param string $key   Key for the new/updated data
+	 * @param string $value Value of new data
+	 * @return void
+	 */
+	public function set($group, $key, $value) {
+		$this->data[strtolower(trim($group))][strtolower(trim($key))] = $value;
+	}
+
+	/**
+	 * Fetch a data item or items from the quote data array
+	 *
+	 * Can be called with no parameters, in which case all known data about the pricing quote is returned, in a two-level nested associative array.  If called with one parameter, returns an array of values in that group, in a flat associative array.  If called with two paramters, returns a single scalar value.
+	 *
+	 * The one-parameter form can also be used for legacy WSOD key names, which will be automatically mapped to the new group and key names, and the one paramter form can also be used to include both a group and key in the same parameter, separated by a forward slash.
+	 *
+	 * Examples:
+	 * <code>
+	 * $quote->get() - gets all known data in a big nested array
+	 * $quote->get('snapshot', 'last'); // gets the last available price for a WSOD equity, would return false for a MarkIT CDS symbol
+	 * $quote->get('last');             // this is a legacy WSOD key which would map to snapshot/last
+	 * $quote->get('snapshot/last');    // one parameter form that includes both a group and a key
+	 * $quote->get('snapshot');         // gets an array of all values in the snapshot group, if it exists
+	 * </code>
+	 *
+	 * @param string $group The group from which to get the data item
+	 * @param string $key   The key within the specified group to return
+	 * @return mixed Either an array of values or a single value
+	 */
+	public function get($group=false, $key=false) {
+		if ($this->data['meta']['validity'] == self::VALIDITY_INVALID) return false;
+
+		$group = strtolower($group);
+		$key = strtolower($key);
+
+		// Allow group and key to be combined and slash-delimited
+		if (strpos($group, "/") !== false and !$key) list($group, $key) = explode("/", $group, 2);
+
+		// Backwards compatibility with legacy WSOD keys
+		$legacyMap = array(
+			"name"=>array('companyinfo', 'name'),
+			"symbol"=>array('companyinfo', 'ftstandard'),
+			"last"=>array('snapshot', 'last'),
+			"lasttime"=>array('snapshot', 'date'),
+			"change"=>array('snapshot', 'change'),
+			"changedir"=>array('snapshot', 'chgdir'),
+			"changepercent"=>array('snapshot', 'chgpct'),
+			"open"=>array('snapshot', 'open'),
+			"high"=>array('snapshot', 'high'),
+			"low"=>array('snapshot', 'low'),
+			"previousclose"=>array('snapshot', 'previousclose'),
+			"volume"=>array('snapshot', 'volume'),
+			"high52week"=>array('snapshot', 'high52week'),
+			"high52weekdate"=>array('snapshot', 'high52weekdate'),
+			"low52week"=>array('snapshot', 'low52week'),
+			"low52weekdate"=>array('snapshot', 'low52weekdate'),
+			"currencyisocode"=>array('snapshot', 'currency'),
+			"pe"=>array('snapshot', 'peratio'),
+			"eps"=>array('snapshot', 'eps'),
+			"dividendyield"=>array('snapshot', 'divyield')
+		);
+		if ($group and isset($legacyMap[$group]) and !$key) list($group, $key) = $legacyMap[$group];
+
+		// Return either a whole group as an assoc array or one single item as a simple scalar value
+		if (!$group) return $this->data;
+		if (!isset($this->data[$group]) or !is_array($this->data[$group])) return false;
+		if (!$key) return $this->data[$group];
+		if (isset($this->data[$group][$key])) return $this->data[$group][$key];
+		return false;
+	}
+
+	/**
+	 * Gets the last time that MIOD successfully priced a stock, which could be used for monitoring purposes
+	 *
+	 * @return integer
+	 */
+	public static function getLastMIODDownloadTime() {
+		return MemcacheAccessV1::getMemcache()->get('pricing_last_miod_download_time');
+	}
+
+	/**
+	 * Recursively normalises the keys in an asociative array so that they are lowercase
+	 *
+	 * @param array $arr Array in which keys are to be lowercased
+	 * @return array
+	 */
+	private static function lowercaseKeys($arr) {
+		$newarr = array();
+		foreach ($arr as $k=>$v) {
+			$newarr[strtolower($k)] = (is_array($v)) ? self::lowercaseKeys($v) : $v;
+		}
+		return $newarr;
+	}
+
+	/**
+	 * Recursively merges arrays, overwriting keys in array 1 with equivilent keys in array 2 if there is any conflict
+	 *
+	 * @param array $arr1 Array to merge
+	 * @param array $arr2 Array to merge
+	 * @return array
+	 */
+	private static function mergeData($arr1, $arr2) {
+		foreach ($arr2 as $k=>$v) {
+			if (!is_array($v) or !isset($arr1[$k]) or !is_array($arr1[$k])) {
+				$arr1[$k] = $v;
+			} else {
+				$arr1[$k] = self::mergeData($arr1[$k], $arr2[$k]);
+			}
+		}
+		return $arr1;
+	}
+}
+
+if (!class_exists('PricingQuote')) class_alias('PricingQuoteV1', 'PricingQuote');

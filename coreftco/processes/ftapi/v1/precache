@@ -1,0 +1,25 @@
+#!/usr/bin/php
+<?php
+/**
+ * Creates and forces the refresh of a specified URL on the FT API
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Include daemon global file
+require_once $_SERVER['COREFTCO']."/processes/global";
+
+// Import args from CLI
+if (empty($_SERVER['argv'][2])) exit("Usage: precache <path> <ARGS>\n");
+$path = $_SERVER['argv'][1];
+$args = json_decode($_SERVER['argv'][2], true);
+
+// Create an API connection
+$conn = new FTAPIConnectionV1();
+
+// Disable caching to prevent loading of existing cached response (any new live response will still be written to cache)
+$conn->setCacheMode(FTAPIConnection::CACHE_NONE);
+
+// Load the specified URL in order to populate cache
+$conn->get($path, $args);

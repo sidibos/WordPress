@@ -1,0 +1,154 @@
+<?php
+/**
+ * The FT requested a mechanism for monitoring their full-text
+ * feeds. We proposed the following:
+ *
+ * First, we write a simple web service that requests the RSS from
+ * FT, then applies some logic to see if it's ok or not.
+ *
+ * Secondly, Pingdom is setup to monitor our web service.
+ *
+ * This means that Pingdom are providing FT with all the analytics
+ * and notification. We'd simply tell Pingdom Yes or No when they
+ * ask "If the Automobiles feed working", by applying some criteria
+ * to the response we get from your servers.
+ *
+ * This script does the checking, by ensuring: 1) Non-error response
+ * received from FT.com 2) Response is valid XML with one or more
+ * stories.   NB. We do not check against a DTD, as there's not one
+ * to use. 3) Most recent story is less than 72 hrs old.
+ *
+ * It is anticipated that Pingdom woud check each feed (via our
+ * service) every 15 mins or so. Pingdom should be configured to
+ * require the string "FEED OK" to be present on the page. The URL
+ * of the check should be of the form:
+ *
+ * http://t.ft.com/monitoring/fulltextfeeds/?http://www.ft.com/rss/full/companies/automobiles
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// First, check for URL:
+if (empty($_SERVER['QUERY_STRING'])) {
+	header("HTTP/1.1 501 Not implemented");
+	echo "This service cannot be used without specifying a URL to check.";
+	exit;
+}
+
+$url = $_SERVER['QUERY_STRING'];
+if (strpos($url,"http://www.ft.com/")!==0) {
+	header("HTTP/1.1 501 Not implemented");
+	echo "The URL of the feed to be checked was invalid or not supported.\n";
+	echo "Check that the correct feed is specified, or contact support to enable monitoring of this feed.";
+	exit;
+}
+
+// Define a list of HTTP response codes for use later:
+$responses = array();
+$responses["100"]="Continue";
+$responses["101"]="Switching Protocols";
+$responses["200"]="OK";
+$responses["201"]="Created";
+$responses["202"]="Accepted";
+$responses["203"]="Non-Authoritative Information";
+$responses["204"]="No Content";
+$responses["205"]="Reset Content";
+$responses["206"]="Partial Content";
+$responses["300"]="Multiple Choices";
+$responses["301"]="Moved Permanently";
+$responses["302"]="Found";
+$responses["303"]="See Other";
+$responses["304"]="Not Modified";
+$responses["305"]="Use Proxy";
+$responses["306"]="(Unused)";
+$responses["307"]="Temporary Redirect";
+$responses["400"]="Bad Request";
+$responses["401"]="Unauthorized";
+$responses["402"]="Payment Required";
+$responses["403"]="Forbidden";
+$responses["404"]="Not Found";
+$responses["405"]="Method Not Allowed";
+$responses["406"]="Not Acceptable";
+$responses["407"]="Proxy Authentication Required";
+$responses["408"]="Request Timeout";
+$responses["409"]="Conflict";
+$responses["410"]="Gone";
+$responses["411"]="Length Required";
+$responses["412"]="Precondition Failed";
+$responses["413"]="Request Entity Too Large";
+$responses["414"]="Request-URI Too Long";
+$responses["415"]="Unsupported Media Type";
+$responses["416"]="Requested Range Not Satisfiable";
+$responses["417"]="Expectation Failed";
+$responses["500"]="Internal Server Error";;
+$responses["501"]="Not Implemented";
+$responses["502"]="Bad Gateway";
+$responses["503"]="Service Unavailable";
+$responses["504"]="Gateway Timeout";
+$responses["505"]="HTTP Version Not Supported";
+
+
+// Attempt to dowload the content within 25 seconds (and any service that is checking
+// our service should be used to perform the timing).  We use 25 seconds as Pingdom's
+// timeout is 30 secs, and so that leaves 5 secs for our scripts / contacting our
+// servers.
+$ch = curl_init();
+
+// set URL and other appropriate options
+curl_setopt($ch, CURLOPT_URL, $url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_USERAGENT, "Assanka feed monitor for ".$_SERVER['REMOTE_ADDR']);
+curl_setopt($ch, CURLOPT_TIMEOUT, 25); 
+
+$body = curl_exec($ch);
+$info = curl_getinfo($ch);
+
+curl_close($ch); // close cURL handler
+
+if (empty($info['http_code'])) {
+	header("HTTP/1.1 410 Gone");
+	echo "No HTTP response code provided by ".$url;
+	exit;
+} else {
+	header("HTTP/1.1 ".$info['http_code']." ".$responses[$info['http_code']]);
+	header("X-Upstream-response: ".$info['http_code']);
+
+	// Now validate:
+	require_once($_SERVER['CORE_PATH']."/helpers/common/v2/common");
+	$xml = @Common::xml2array($body);
+	if (!$xml) {
+		echo "FAIL: Not valid XML at ".$url.".\n";
+		echo "First 1000 bytes follow:\n";
+		echo substr($body, 0, 1000);
+		exit;
+	}
+
+	if (!isset($xml['channel'])) {
+		echo "FAIL: Channel not present in ".$url.".\n";
+		echo "First 1000 bytes follow:\n";
+		echo substr($body, 0, 1000);
+		exit;
+	}
+	$itemcount = 0;
+	$itemnewest = 0;
+	foreach ($xml['channel']['children'] as $child) {
+		if ($child['type']=='item') {
+			$itemcount++;
+			if (!empty($child['pubDate']['value'])) {
+				$thistime = strtotime($child['pubDate']['value']);
+				if ($thistime>$itemnewest) $itemnewest = $thistime;
+			}
+		}
+	}
+	if ($itemcount > 0) {
+		if ((time()-$itemnewest) < 72*3600) {
+			echo "FEED OK\n";
+		} else {
+			echo "FAIL: Feed is old\n";
+		}
+		echo "Found ".$itemcount." items, newest is ".(time()-$itemnewest)." secs old";
+	} else {
+		echo "FAIL: Feed is empty\n";
+	}
+}
+	

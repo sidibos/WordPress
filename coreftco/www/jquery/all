@@ -1,0 +1,26 @@
+<?php
+
+$readfiles = array();
+$readfiles[] = 'jquery-1.6.2.min.js';
+$readfiles[] = 'jquery-json.js';
+$readfiles[] = 'jquery-cookie.js';
+$readfiles[] = 'jquery-scrollto-1.4.2.min.js';
+$readfiles[] = 'alerts.js';
+
+$incfiles = array();
+$incfiles[] = 'authlightbox';
+
+// Return javascript headers and Varnish cache-ability headers
+header('Content-type: text/javascript');
+$offset = 60 * 60 * 24 * 3;
+header('Cache-Control: max-age='.$offset);
+header('Expires: ' . gmdate('D, d M Y H:i:s', time() + $offset) . ' GMT');
+header('X-External-Cache-Control: public, max-age='.$offset);
+
+foreach ($readfiles as $file) {
+	readfile($file);
+}
+foreach ($incfiles as $file) {
+	include($file);
+}
+?>

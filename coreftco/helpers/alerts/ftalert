@@ -1,0 +1,51 @@
+<?php
+/**
+ * A static class to handle alerts for a website using cookies,
+ * paired with javascript to parse the (JSON) cookie and display
+ * alerts on screen.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+class FTAlert {
+
+	// Store an alert message in a cookie
+	public static function alert($message, $detail = '', $type = 'error') {
+		global $wp_version;
+
+		// Get any existing data from the cookie.
+		if (!empty($_COOKIE['assanka_alerts'])) {
+
+			$alertcookietext = $_COOKIE['assanka_alerts'];
+
+			// If running within WordPress, the cookie data will have been add-slashes; decode.
+			if (isset($wp_version)) $alertcookietext = stripslashes($alertcookietext);
+
+			// Extract the alert cookie data
+			$alertdataarray = @json_decode($alertcookietext, true);
+			if (!$alertdataarray) $alertdataarray = array();
+		} else {
+			$alertdataarray = array();
+		}
+
+		if (!is_array($alertdataarray)) return false;
+	
+		// Add the newly supplied alert - use the message as a key so that the same message is not queued more than once
+		$alertdataarray[$message] = array('msg'=>$message, 'desc'=>$detail, 'type'=>$type);
+	
+		// Store and re-send the amended cookie
+		$serialised = array();
+		foreach($alertdataarray as $alert) $serialised[] = json_encode($alert);
+		$cookietext = '['.join(',',$serialised).']';
+		setrawcookie('assanka_alerts', rawurlencode($cookietext), time() + 1200, '/', $_SERVER['HTTP_HOST']);
+		if (isset($wp_version)) $alertdataarray = add_magic_quotes($alertdataarray);
+		$_COOKIE['assanka_alerts'] = json_encode($cookietext);
+	}
+
+	// Store an alert message in a cookie, and then redirect to the supplied URL and exit.
+	public static function redirectAndAlert($destination, $message, $detail = '', $type = 'error') {
+		self::alert($message, $detail, $type);
+		header('Location: '.$destination);
+		exit;
+	}
+}
