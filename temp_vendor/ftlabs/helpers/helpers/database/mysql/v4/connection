@@ -1,0 +1,22 @@
+<?php
+/**
+ * Class for connection to mysql database
+ * 
+ * Using the core for this is deprecated.  See http://git.ak.ft.com/ftlabs/mysql for the latest version
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/database/mysql/v4/result';
+require_once $_SERVER['CORE_PATH'].'/helpers/common/v3/common';
+
+
+if (!class_exists('FTLabs\MySqlConnection')) {
+	require_once $_SERVER['CORE_PATH'].'/vendor/autoload.php';
+}
+class_alias('FTLabs\MySqlConnection', 'MySQLConnectionV4');
+class_alias('FTLabs\MySqlConnectionException', 'MySqlConnectionException');
+class_alias('FTLabs\MySqlQueryException', 'MySqlQueryException');
+
+if (!class_exists('MySQLConnection')) class_alias('MySQLConnectionV4', 'MySQLConnection');

@@ -1,0 +1,295 @@
+<?php
+if (empty($jsdirectaccess)) {
+	header("Cache-Control: must-revalidate");
+	header("Content-type: text/javascript");
+	$offset = 60 * 60 * 24 * 3;
+	header("Expires: " . gmdate("D, d M Y H:i:s", time() + $offset) . " GMT");
+}
+?>
+
+function ActiveTable(grp) {
+
+	this.grpname = grp;
+	this.high = 1;
+	this.req = false;
+	addLoadEvent(function() { activetables[grp].addActiveTableFieldHandlers(); });
+}
+
+ActiveTable.prototype.add_std = function () {
+	var sel = new Array();
+	if (!(sel=this.getSelections())) return false;
+	for(var i=0; i<sel.length; i++) {
+		var cols = sel[i];
+		var value = cols.join("|");
+		if (id = this.rowExistsInTable(cols[0])) {
+			var row = obj("acttbl_"+this.grpname+"_row"+id);
+			var formfield = obj(this.grpname+"_value"+id);
+			formfield.value=value;
+			var cells = row.getElementsByTagName("td");
+			for (var j=0; j<cols.length; j++) {
+				cells[j].innerHTML = cols[j];
+			}
+		} else {
+			var id = "#"+this.getHighID();
+			var tbl = obj("acttbl_"+this.grpname+"_tbody");
+			var newrow = tbl.insertRow(-1);
+			newrow.id = "acttbl_"+this.grpname+"_row"+id;
+			for (var j=0; j<cols.length; j++) {
+				var newcell = newrow.insertCell(-1);
+				newcell.innerHTML = cols[j];
+			}
+			var newcell = newrow.insertCell(-1);
+			newcell.innerHTML = "<input type=\"hidden\" name=\""+this.grpname+"_value"+id+"\" id=\""+this.grpname+"_value"+id+"\" value=\""+value+"\" /><a href=\"javascript:activetables['"+this.grpname+"'].deleterow('"+id+"')\"><img src=\"<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/delete.gif\" width=\"16\" height=\"16\" id=\"di_"+this.grpname+"_"+id+"\"></a>";
+		}
+	}
+	stripe();
+	var inputs = getElementsByClassname("acttbl_"+this.grpname+"_field");
+	for (var i=0; i<inputs.length; i++) {
+		if ((inputs[i].type != "hidden") && (inputs[i].disabled != true)) {
+			inputs[i].focus();
+			break;
+		}
+	}
+}
+
+ActiveTable.prototype.add_ajax = function (url) {
+	var selections = new Array();
+	if (!(selections=this.getSelections())) return false;
+
+	// Serialize the selections
+	var x = new Array();
+	for (i=0; i<selections.length; i++) {
+
+		// REVIEW:AB:20061212: Of course this doesn't actually work.  We ought to be POSTing.
+		// Can this be done without major surgery to existing sites.
+		for (j=0; j<selections[i].length; j++) selections[i][j] = selections[i][j].replace(/,/g, "%2C").replace(/\|/g, "%7C");
+		
+		a = x.length;
+		x[a] = selections[i].join(",");
+	}
+	var serial = x.join("|");
+	
+	// Hashes are interpreted as anchors and so not read by PHP, so encode them, along with ampersands
+	serial = serial.replace(/[#]/g, "%23");
+	serial = serial.replace(/[&]/g, "%26");
+	
+	this.req = newXmlHttp();
+	var url = url+"?q="+serial;
+	this.req.open("GET", url, true);
+
+	// When the response is received, process it
+	var thisobj = this;
+	this.req.onreadystatechange = function() { thisobj.processAjaxResponse() };
+	this.req.send(null);
+	obj("acttbl_"+this.grpname+"_btn").disabled = true;
+}
+
+ActiveTable.prototype.processAjaxResponse = function () {
+	if (this.req.readyState == 4) {
+		var xmlDoc = this.req.responseXML;
+		if (!xmlDoc || !xmlDoc.documentElement) {
+			alert(this.req.responseText);
+		} else {
+			var rows = xmlDoc.documentElement.getElementsByTagName("row");
+			for (var i=0; i<rows.length; i++) {
+				var data = rows[i].getElementsByTagName("col");
+				var id = rows[i].getAttribute("id");
+				var value = rows[i].getAttribute("value");
+				if (this.idExistsInTable(id)) {
+					var row = obj("acttbl_"+this.grpname+"_row"+id);
+					var formfield = obj(this.grpname+"_value"+id);
+					formfield.value=value;
+					var cells = row.getElementsByTagName("td");
+					for (var j=0; j<data.length; j++) {
+						cells[j].innerHTML = data[j].getAttribute("d");
+					}
+				} else {
+					var tbl = obj("acttbl_"+this.grpname+"_tbody");
+					var newrow = tbl.insertRow(-1);
+					newrow.id = "acttbl_"+this.grpname+"_row"+id;
+					for (var j=0; j<data.length; j++) {
+						var newcell = newrow.insertCell(-1);
+						newcell.innerHTML = data[j].getAttribute("d");
+					}
+					var newcell = newrow.insertCell(-1);
+					newcell.innerHTML = "<input type=\"hidden\" name=\""+this.grpname+"_value"+id+"\" id=\""+this.grpname+"_value"+id+"\" value=\""+value+"\" /><a href=\"javascript:activetables['"+this.grpname+"'].deleterow('"+id+"')\"><img src=\"<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/delete.gif\" width=\"16\" height=\"16\" id=\"di_"+this.grpname+"_"+id+"\"></a>";
+				}
+			}
+		}
+		obj("acttbl_"+this.grpname+"_btn").disabled = false;
+		this.req=false;
+		stripe();
+		var inputs = getElementsByClassname("acttbl_"+this.grpname+"_field");
+		for (var i=0; i<inputs.length; i++) {
+			if ((inputs[i].type != "hidden") && (inputs[i].disabled != true)) {
+				inputs[i].focus();
+				break;
+			}
+		}
+	}
+}
+
+ActiveTable.prototype.deleterow = function (id) {
+	var elid = "acttbl_"+this.grpname+"_row";
+	var table = obj("acttbl_"+this.grpname+"_tbody");
+	var rows = table.getElementsByTagName("tr");
+	for (var i=0; i<rows.length; i++) {
+		var thisid = rows[i].id.substring(elid.length);
+		if (thisid == id) {
+			var formfield = obj(this.grpname+"_value"+id);
+			var delimg = obj("di_"+this.grpname+"_"+id);
+			if (formfield.name.indexOf("_deletedvalue") == -1) {
+				formfield.name=this.grpname+"_deletedvalue"+id;
+				delimg.src = "<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/undelete.gif";
+				var cols = rows[i].getElementsByTagName("td");
+				for (var j=0; j<cols.length; j++) {
+					cols[j].style.textDecoration = "line-through";
+				}
+			} else {
+				formfield.name=this.grpname+"_value"+id;
+				delimg.src = "<?=$_SERVER["CORE_WEB_ALIAS"]?>/admin/v3/img/icons/delete.gif";
+				var cols = rows[i].getElementsByTagName("td");
+				for (var j=0; j<cols.length; j++) {
+					cols[j].style.textDecoration = "none";
+				}
+			}
+			delimg.parentNode.blur();
+			break;
+		}
+	}
+}
+
+// Construct an array of all permutations selected
+ActiveTable.prototype.getSelections = function () {
+	var selections = new Array();
+	var inputs = getElementsByClassname("acttbl_"+this.grpname+"_field");
+	for (var i=0; i<inputs.length; i++)	{
+		if (inputs[i].options) {
+			if (inputs[i].options[inputs[i].selectedIndex].value == "#SELECTALL#")	{
+				var newselections = new Array();
+				if (selections.length) {
+					for (k=0; k<selections.length; k++) {
+						for (j=1; j<inputs[i].options.length; j++) {
+							var a = newselections.length;
+							newselections[a] = selections[k].slice();
+							newselections[a][selections[k].length] = inputs[i].options[j].value;
+						}
+					}
+				} else {
+					for (j=1; j<inputs[i].options.length; j++) {
+						var a = newselections.length;
+						newselections[a] = new Array();
+						newselections[a][0] = inputs[i].options[j].value;
+					}
+				}
+				selections = newselections;
+			} else {
+				if (selections.length) {
+					for (k=0; k<selections.length; k++) {
+						selections[k][selections[k].length] = inputs[i].options[inputs[i].selectedIndex].value;
+					}
+				} else {
+					selections[0] = new Array();
+					selections[0][0] = inputs[i].options[inputs[i].selectedIndex].value;
+				}
+			}
+			inputs[i].selectedIndex=0;
+		} else {
+			var val = inputs[i].value;
+			if (selections.length) {
+				for (k=0; k<selections.length; k++) {
+					selections[k][selections[k].length] = val;
+				}
+			} else {
+				selections[0] = new Array();
+				selections[0][0] = val;
+			}
+			if (inputs[i].type != "hidden") inputs[i].value = "";
+		}
+	}
+
+	// Check the user is certain if adding large number of possibilities
+	if (selections.length > 20)	{
+		if (!confirm("Adding "+selections.length+" entries to the table: are you sure?")) {
+			return false;
+		}
+	}
+	return selections;
+}
+
+// Find an ID in the table
+ActiveTable.prototype.idExistsInTable = function (id) {
+	var elid = "acttbl_"+this.grpname+"_row";
+	var table = obj("acttbl_"+this.grpname+"_tbody");
+	var rows = table.getElementsByTagName("tr");
+	for (var i=0; i<rows.length; i++) {
+		var thisid = rows[i].id.substring(elid.length);
+		if (thisid == id) {
+			return thisid;
+		}
+	}
+	return false;
+}
+
+// Find a primary key row in the table
+ActiveTable.prototype.rowExistsInTable = function (value) {
+	var elid = "acttbl_"+this.grpname+"_row";
+	var table = obj("acttbl_"+this.grpname+"_tbody");
+	var rows = table.getElementsByTagName("tr");
+	for (var i=0; i<rows.length; i++) {
+		var pricell = rows[i].getElementsByTagName("td")[0];
+		if (pricell.textContent == value) {
+			return rows[i].id.substring(elid.length);
+		}
+	}
+	return false;
+}
+
+// Return a new unique javascript-generated ID
+ActiveTable.prototype.getHighID = function () {
+	return this.high++;
+}
+
+// Add event handlers to the form fields for this table
+ActiveTable.prototype.addActiveTableFieldHandlers = function () {
+	var formfields = getElementsByClassname("acttbl_"+this.grpname+"_field");
+	for (var i = 0; i < formfields.length; i++) {
+		if (window.addEventListener) {
+			var thegroupname = this.grpname;
+			formfields[i].addEventListener("keydown", function(e) { return activetables[thegroupname].activeTableFieldKeyHandler(e); }, false);
+			formfields[i].addEventListener("keypress", function(e) { return activetables[thegroupname].activeTableFieldKeyHandler(e); }, false);
+		} else if (window.attachEvent) {
+			formfields[i].attachEvent("keydown", function(e) { return activetables[thegroupname].activeTableFieldKeyHandler(e); });
+			formfields[i].attachEvent("keypress", function(e) { return activetables[thegroupname].activeTableFieldKeyHandler(e); });		
+		}
+	}
+}
+
+// Deal with key events in the form fields, specifically return/enter key
+ActiveTable.prototype.activeTableFieldKeyHandler = function (theevent) {
+	var e = (window.event) ? event : theevent;
+	if (e && e.keyCode) {
+		
+		// Enter/Return
+		if (e.keyCode == 13 || e.keyCode == 3) {
+			if (e.type == "keydown") document.getElementById('acttbl_'+this.grpname+'_btn').click();
+			e.returnValue = false;
+			e.cancel = true;
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+// Provide the facility for rows to be clicked upon to simply toggle their stlye
+ActiveTable.prototype.toggleRowHighlight = function (tablerow) {
+	var nc="";
+	if (tablerow.className=='stripeeven') nc="stripeevenselected";
+	if (tablerow.className=='stripeodd') nc="stripeoddselected";
+	if (tablerow.className=='stripeevenselected') nc="stripeeven";
+	if (tablerow.className=='stripeoddselected') nc="stripeodd";
+	if (nc!="") tablerow.className=nc;
+}
+
+

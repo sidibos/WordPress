@@ -1,0 +1,4 @@
+<h3>Information</h3>
+<div class="paddedcontent">The pages shown in this table do not exist on the server, but have been requested by visitors.  They may do this for a number of reasons - the page may have existed previously and they are following a link from a search engine or their bookmarks, they may have misspelled the address, or you may have an invalid link on another page of the site.</div>
+<div class="paddedcontent">If the latter is true, the referrer column in the table shows the page from which the failed request originated.  If there is no referrer, the user may have typed the address directly into their browser's address bar.</div>
+<div class="paddedcontent">If you see a number of requests for pages you don't recognise at all, often mentioning "admin", "awstats", "xmlrpc", or other .pl, .php or .exe files, they are probably the result of "bots" scanning the server for a weakness.  They can be safely ignored.</div>

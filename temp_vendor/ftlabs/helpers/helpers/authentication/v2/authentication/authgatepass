@@ -1,0 +1,194 @@
+<?php
+/**
+ * Authenticate a user using a Gatepass OAuth token exchange
+ *
+ * Basic use:
+ *
+ * 1. Set your keys using AuthGatepass:setConsumerKey();
+ * 2. Set the Gatepass hostname and configure SSL if necessary with setHost() and useSSL()
+ * 3. Call authenticate() to get a Gatepass User ID for the current user, or null if the user is not logged in
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER['CORE_PATH'].'/helpers/authentication/v2/interfaces');
+require_once($_SERVER['CORE_PATH'].'/helpers/gatepass/api');
+require_once($_SERVER['CORE_PATH'].'/helpers/gatepass/oauthclient');
+
+class AuthGatepass implements AssankaAuthenticationInterface {
+
+	private static $oahost, $usessl, $consumerkey, $consumersecret;
+	private static $pathreqtok = '/oauth/getrequesttoken';
+	private static $pathacctok = '/oauth/getaccesstoken';
+	private static $pathauthorise = '/oauth/authorise';
+	private static $pathlogout = "/signin/logout";
+	private static $tokens, $user;
+	private static $flags = 0;
+	private static $iscached = false;
+	private static $secret = 'DOrDbpmD2A8ONtyLkQ7VLTK7zyCfQfs1';
+
+	/**
+	 * Set the Gatepass host
+	 *
+	 * If the protocol is also included in the string (eg 'http://gatepass.assanka.com') then SSL mode is enabled or disabled as appropriate (which can also be done by calling useSSL()).
+	 *
+	 * @param string $host The Gatepass host name (including protocol, optionally)
+	 * @return void
+	 */
+	public static function setHost($host) {
+		if (stripos($host, "http://") === 0) {
+			self::useSSL(false);
+			$host = trim(substr($host, 7), "/");
+		} elseif (stripos($host, "https://") === 0) {
+			self::useSSL(true);
+			$host = trim(substr($host, 8), "/");
+		}
+		self::$oahost = $host;
+	}
+
+	/**
+	 * Set the OAuth Consumer key
+	 *
+	 * Every application registered with Gatepass has a consumer key, which is a randomly generated 'username' and password for your application.  Specify both the cumer key and secret to enable OAuth tokens to be correctly signed.
+	 *
+	 * @param string $key    The application's Gatepass consumer key
+	 * @param string $secret The application's secret that accompanies the consumer key
+	 * @return void
+	 */
+	public static function setConsumerKey($key, $secret) {
+		self::$consumerkey = $key;
+		self::$consumersecret = $secret;
+	}
+
+	/**
+	 * Set the paths to the endpoints for OAuth on the Gatepass server
+	 *
+	 * By default these are set to the known endpoint locations defined within Gatepass (by default, '/oauth/getrequesttoken', '/oauth/getaccesstoken' and '/oauth/authorise'), and should not need to be changed.
+	 *
+	 * @param string $reqtok    The path to the OAuth request token endpoint
+	 * @param string $acctok    The path to the OAuth access token endpoint
+	 * @param string $authorise The path to the OAuth user interactive authorisation endpoint
+	 * @return void
+	 */
+	public static function setOauthEndpoints($reqtok, $acctok, $authorise) {
+		self::$pathreqtok = $reqtok;
+		self::$pathacctok = $acctok;
+		self::$pathauthorise = $authorise;
+	}
+
+	/**
+	 * Specify whether the connection to the Gatepass OAuth API should be secure
+	 *
+	 * By default SSL is not used.  See also setConsumerKey().
+	 *
+	 * @param boolean $newval Whether to use SSL (default true)
+	 * @return void
+	 */
+	public static function useSSL($newval=true) {
+		self::$usessl = ($newval == true);
+	}
+
+	/**
+	 * Authenticate the user
+	 *
+	 * Returns a Gatepass user ID.  In all Assanka authentication classes, you may pass in constants to dictate whether the user is permitted to remain anonymous, and whether to save the user ID in the session to avoid a resuthentication on every request.  These apply to AuthGatepass as follows:
+	 *
+	 * REQUIRE_AUTHENTICATED_USER: Always on - it is not possible to check a user's Gatepass login state without performing a user interactive authorisation redirect which is not transparent to the user, so effectively REQUIRE_AUTHENTICATED_USER is always enabled, and passing in this flag has no effect.
+	 *
+	 * @param integer $flags Bitwise options for the authentication operation.  See AssankaAuthenticationInterface for all available constants, and list above for how these apply to AuthGatepass.
+	 * @return integer The user's Gatepass user ID
+	 */
+	public static function authenticate($flags=0) {
+		if (!empty($_REQUEST['gatepass_logout'])) {
+			self::logout(false);
+			exit;
+		}
+		self::$flags = $flags;
+		if (isset(self::$user)) return self::$user;
+		if (!empty($_COOKIE['AuthGatepass']) and $parts = self::decodeCookie($_COOKIE['AuthGatepass']) and count($parts) == 3 and is_numeric($parts[0])) {
+
+			// If cookie is older than a day, renew it
+			if ($parts[1] < (time() - 86400)) {
+				setcookie('AuthGatepass', self::encodeCookie($parts[0]), 0, '/');
+			}
+
+			self::$iscached = true;
+			return $parts[0] + 0;
+		}
+		try {
+			$tokens = (self::$tokens = self::oaclient()->authorise());
+		} catch (Exception $e) {
+			if ($e->getMessage() == 'HTTP Request timed out' or $e->getMessage() == 'Could not get request token') {
+				$tokens = false;
+			} else {
+				throw $e;
+			}
+		}
+		if ($tokens) {
+			$gpapi = new GatepassAPI(self::$consumerkey, self::$consumersecret);
+			$gpapi->useOAuth($tokens['accesstoken'], $tokens['tokensecret']);
+			$gpapi->useSSL(self::$usessl);
+			$gpapi->setHost(self::$oahost);
+			$user = $gpapi->getData(false, 'gatepass', 'userid');
+			setcookie('AuthGatepass', self::encodeCookie($user), 0, '/');
+			return $user;
+		} else {
+
+			require_once($_SERVER['CORE_PATH'].'/helpers/templatemanager/v4/templatemanager');
+			$tm = new TemplateManager(dirname(__FILE__)."/templates");
+			exit($tm->render('authrequired_gatepass'));
+		}
+	}
+
+	/**
+	 * Log the user out
+	 *
+	 * @param boolean $andgatepass If true, will redirect the browser to Gatepass for logout, and will exit.  IF false, will just clear the cookie and return.
+	 * @return void
+	 */
+	public static function logout($andgatepass=true) {
+		setcookie('AuthGatepass', '', time() - 86400, '/');
+		if ($andgatepass) {
+			$url = (self::$usessl) ? "https://" : "http://";
+			$url .= self::$oahost.self::$pathlogout;
+			header("Location: ".$url);
+			exit;
+		}
+	}
+
+	public static function isCached() {
+		return (self::$iscached == true);
+	}
+
+	public static function oaclient() {
+		static $oa;
+		if ($oa) return $oa;
+		if (empty(self::$oahost) or empty(self::$consumerkey) or empty(self::$consumersecret)) {
+			throw new Exception('Cannot connect to OAuth provider - required parameters not set');
+		}
+		$url = (self::$usessl) ? "https://" : "http://";
+		$url .= self::$oahost;
+		$oa = new OAuthClient($url, self::$pathreqtok, self::$pathacctok, self::$pathauthorise, self::$consumerkey, self::$consumersecret);
+		return $oa;
+	}
+
+	private static function decodeCookie($str) {
+
+		// Format is <userid>:<gentime>:<sig>
+		$parts = explode(':', $str);
+		if (count($parts) != 3 or $parts[1] < (time() - (86400 * 7))) return false;
+		if (md5($parts[0].':'.$parts[1].':'.self::$secret) == $parts[2]) {
+			return $parts;
+		} else {
+			return false;
+		}
+	}
+
+	private static function encodeCookie($userid) {
+		$time = time();
+		$tosign = $userid.':'.$time.':'.self::$secret;
+		$sig = md5($tosign);
+		return $userid.':'.$time.':'.$sig;
+	}
+}

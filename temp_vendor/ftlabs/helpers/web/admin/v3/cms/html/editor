@@ -1,0 +1,30 @@
+<script type="text/javascript">
+
+// First set the switch link to switch to the public site
+publiclink = document.getElementById("userinfo").getElementsByTagName("a").item(0);
+publiclink.href = "--publiclink--";
+
+<!--
+var oFCKeditor = new FCKeditor("Editor");
+oFCKeditor.BasePath 	= "--webalias--/fckeditor/v2.5/";
+oFCKeditor.Width		= "100%";
+oFCKeditor.Height		= 500;
+oFCKeditor.ToolbarSet	= "Accessibility";
+oFCKeditor.Value		= '--contentvalue--';
+
+
+oFCKeditor.Config.AssetsEnabled	= --assetsenabled--;
+
+// Proceed to generate and echo the assets.  To do this two things are required;
+// an array of asset IDs and titles, and the path of the script to use when
+// loading them.  Echo the script path first.
+oFCKeditor.Config.AssetScriptPath = "http://--httphost----webalias--/admin/v3/cms/xml/assetecho";
+
+--assetarray--
+
+// Required to work around a later join FCK seems to do anyway
+oFCKeditor.Config.AssetArray = oFCKeditor.Config.AssetArray.join('||,||');
+
+oFCKeditor.Create() ;
+//-->
+</script>

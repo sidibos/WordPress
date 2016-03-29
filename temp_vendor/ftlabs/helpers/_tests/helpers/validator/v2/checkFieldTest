@@ -1,0 +1,162 @@
+<?php
+/**
+ * Test for validator::checkField
+ *
+ * $Revision$
+ * $Date$
+ * $Author$
+ *
+ * @codingstandard Assanka
+ * @author Luke Blaney <luke.blaney@assanka.net>
+ * @copyright Assanka Limited [All rights reserved]
+ */
+
+
+class checkFieldTest extends PHPUnit_Framework_TestCase {
+	public function testTextType() {
+		$this->assertFalse(validator::checkfield('valid string', array('type' => "text")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(new DateTime(), array('type' => "text")), "Wrong validation message returned");
+	}
+	public function testTextareaType() {
+		$this->assertFalse(validator::checkfield('valid string', array('type' => "textarea")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(new DateTime(), array('type' => "textarea")), "Wrong validation message returned");
+	}
+	public function testCheckType() {
+		$this->assertFalse(validator::checkfield(true, array('type' => "check")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(array(), array('type' => "check")), "Wrong validation message returned");
+	}
+	public function testChecklistType() {
+		$this->assertFalse(validator::checkfield(array('sheep', 'pig', 'hen'), array('type' => "checklist", 'options' => array('sheep' => "Sheep", 'giraffe' => "Giraffe", 'pig' => "Pig", 'hen' => "Chicken", 'donkey' => "Donkey"))), "Valid input failed");
+		$this->assertEquals("Options not set", validator::checkfield(true, array('type' => "checklist")), "Wrong validation message returned");
+		$this->assertEquals("Submitted data is not an array", validator::checkfield(true, array('type' => "checklist", 'options' => array('sheep' => "Sheep", 'giraffe' => "Giraffe", 'pig' => "Pig", 'hen' => "Chicken", 'donkey' => "Donkey"))), "Wrong validation message returned");
+		$this->assertEquals("Selections must be from the available options", validator::checkfield(array('sheep', 'pig', 'hen', 'tennis ball'), array('type' => "checklist", 'options' => array('sheep' => "Sheep", 'giraffe' => "Giraffe", 'pig' => "Pig", 'hen' => "Chicken", 'donkey' => "Donkey"))), "Wrong validation message returned");
+	}
+	public function testIntegerType() {
+		$this->assertFalse(validator::checkfield("27", array('type' => "integer")), "Valid input failed");
+		$this->assertEquals("Not a whole number", validator::checkfield(7.3, array('type' => "integer")), "Wrong validation message returned");
+	}
+	public function testDateType() {
+		$this->assertFalse(validator::checkfield(new DateTime(), array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('2011-04-06 16:10:29', array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('6th April 2011', array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('today', array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('06/04/2011', array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('@1302171980', array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield(1302171980, array('type' => "date")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('14 April 1912 23:40', array('type' => "date")), "Valid input failed");
+		$this->assertEquals("Not a valid date", validator::checkfield('5.5/Apple/26', array('type' => "date")), "Wrong validation message returned");
+	}
+	public function testDatetimeType() {
+		$this->assertFalse(validator::checkfield(new DateTime(), array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('2011-04-06 16:10:29', array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('6th April 2011', array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('today', array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('06/04/2011', array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('@1302171980', array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield(1302171980, array('type' => "datetime")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('14 April 1912 23:40', array('type' => "datetime")), "Valid input failed");
+		$this->assertEquals("Not a valid date", validator::checkfield('5.5/Apple/26', array('type' => "datetime")), "Wrong validation message returned");
+	}
+	public function testDatetimesecondsType() {
+		$this->assertFalse(validator::checkfield(new DateTime(), array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('2011-04-06 16:10:29', array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('6th April 2011', array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('today', array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('06/04/2011', array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('@1302171980', array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield(1302171980, array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('14 April 1912 23:40', array('type' => "datetimeseconds")), "Valid input failed");
+		$this->assertEquals("Not a valid date", validator::checkfield('5.5/Apple/26', array('type' => "datetimeseconds")), "Wrong validation message returned");
+	}
+	public function testTimeType() {
+		$this->assertFalse(validator::checkfield(1234, array('type' => "time")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('16:22:45', array('type' => "time")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('09:27', array('type' => "time")), "Valid input failed");
+		$this->assertEquals("Not a valid time", validator::checkfield('pig', array('type' => "time")), "Wrong validation message returned");
+	}
+	public function testTimesecondsType() {
+		$this->assertFalse(validator::checkfield(1234, array('type' => "timeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('16:22:45', array('type' => "timeseconds")), "Valid input failed");
+		$this->assertFalse(validator::checkfield('09:27', array('type' => "timeseconds")), "Valid input failed");
+		$this->assertEquals("Not a valid time", validator::checkfield('pig', array('type' => "timeseconds")), "Wrong validation message returned");
+	}
+	public function testHiddenType() {
+		$this->assertFalse(validator::checkfield(3.14, array('type' => "hidden")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(new DateTime(), array('type' => "hidden")), "Wrong validation message returned");
+	}
+	public function testDummyType() {
+		$this->assertFalse(validator::checkfield("pears", array('type' => "dummy")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(new DateTime(), array('type' => "dummy")), "Wrong validation message returned");
+	}
+	public function testAutocompleteType() {
+		$this->assertFalse(validator::checkfield('autocompl...', array('type' => "autocomplete")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(array('option1', 'option7'), array('type' => "autocomplete")), "Wrong validation message returned");
+	}
+	public function testSelectType() {
+		$this->assertFalse(validator::checkfield('sheep', array('type' => "select", 'options' => array('sheep' => "Sheep", 'giraffe' => "Giraffe", 'pig' => "Pig", 'hen' => "Chicken", 'donkey' => "Donkey"))), "Valid input failed");
+		$this->assertEquals("Options not set", validator::checkfield('sheep', array('type' => "select")), "Wrong validation message returned");
+		$this->assertEquals("Selection must be one of the available options", validator::checkfield('tennis ball', array('type' => "select", 'options' => array('sheep' => "Sheep", 'giraffe' => "Giraffe", 'pig' => "Pig", 'hen' => "Chicken", 'donkey' => "Donkey"))), "Wrong validation message returned");
+	}
+	public function testPasswordType() {
+		$this->assertFalse(validator::checkfield('Mý a yl dybry gwéder hag éf ny wra ow ankenya.;\@#^&', array('type' => "password")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(array(1,5,3,1), array('type' => "password")), "Wrong validation message returned");
+	}
+	public function testRichtextType() {
+		$this->assertFalse(validator::checkfield('யாமறிந்த மொழிகளிலே தமிழ்மொழி போல் இனிதாவது எங்கும் காணோம்,
+பாமரராய் விலங்குகளாய், உலகனைத்தும் இகழ்ச்சிசொலப் பான்மை கெட்டு,
+நாமமது தமிழரெனக் கொண்டு இங்கு வாழ்ந்திடுதல் நன்றோ? சொல்லீர்!
+தேமதுரத் தமிழோசை உலகமெலாம் பரவும்வகை செய்தல் வேண்டும்.', array('type' => "richtext")), "Valid input failed");
+		$this->assertEquals("Value must be scalar", validator::checkfield(new DateTime(), array('type' => "richtext")), "Wrong validation message returned");
+	}
+	public function testImageuploadType() {
+		$this->markTestIncomplete();
+		$this->assertFalse(validator::checkfield('', array('type' => "imageupload")), "Valid input failed");
+		$this->assertEquals("", validator::checkfield('', array('type' => "imageupload")), "Wrong validation message returned");
+	}
+	public function testUploadType() {
+		$this->markTestIncomplete();
+		$this->assertFalse(validator::checkfield('', array('type' => "upload")), "Valid input failed");
+		$this->assertEquals("", validator::checkfield('', array('type' => "upload")), "Wrong validation message returned");
+	}
+	public function testSpacerType() {
+		$this->assertFalse(validator::checkfield(null, array('type' => "spacer")), "Valid input failed");
+		$this->assertEquals("Value must be null", validator::checkfield('null', array('type' => "spacer")), "Wrong validation message returned");
+	}
+	public function testFloatType() {
+		$this->assertFalse(validator::checkfield(23534.2342, array('type' => "float")), "Valid input failed");
+		$this->assertFalse(validator::checkfield("42", array('type' => "float")), "Valid input failed");
+		$this->assertEquals("Not a valid number", validator::checkfield('apple and pear', array('type' => "float")), "Wrong validation message returned");
+	}
+	public function testUnknownType() {
+		validator::checkfield('???', array('type' => "unknown"));
+		// This emits a notice, but handling of notices has changed, now Logger intercepts them, so PHPUnit exception won't happen.
+		$this->markTestIncomplete("Can't detect a PHP notice");
+	}
+
+
+	public function testPostcodeValidationType() {
+		$this->assertFalse(validator::checkfield('W12 7SB', array('type' => "text", 'validation' => "postcode")), "Valid input failed");
+		$this->assertEquals("Not a valid UK Postcode", validator::checkfield('ABC 123', array('type' => "text", 'validation' => "postcode")), "Wrong validation message returned");
+	}
+	public function testEmailValidationType() {
+		$this->assertFalse(validator::checkfield('support@assanka.net', array('type' => "text", 'validation' => "email")), "Valid input failed");
+		$this->assertEquals("Not a valid email address", validator::checkfield('http://wiki.assanka.com/w/index.php', array('type' => "text", 'validation' => "email")), "Wrong validation message returned");
+	}
+	public function testUrlValidationType() {
+		$this->assertFalse(validator::checkfield('http://wiki.assanka.com/w/index.php?title=Field_Definitions&action=edit', array('type' => "text", 'validation' => "url")), "Valid input failed");
+		$this->assertFalse(validator::checkfield("http://www.ft.com/rss/full/reports/cote-d'azur", array('type' => "text", 'validation' => "url")), "Valid input failed");
+		$this->assertFalse(validator::checkfield("http://example.org/\$-_.+!*'(),", array('type' => "text", 'validation' => "url")), "Valid input failed");
+		$this->assertFalse(validator::checkfield("http://example.org/\$-_.+!*'(),?a=b&c", array('type' => "text", 'validation' => "url")), "Valid input failed");
+		$this->assertFalse(validator::checkfield("http://m.ft.com/blogs/arena", array('type' => "text", 'validation' => "url")), "Valid input failed");
+		$this->assertEquals("Not a valid web address (URL)", validator::checkfield('each peach pear plum', array('type' => "text", 'validation' => "url")), "Wrong validation message returned");
+		$this->assertFalse(validator::checkfield("http://m.ft.com/", array('type' => "text", 'validation' => "url")), "Valid input failed");
+	}
+	public function testPhoneValidationType() {
+		$this->assertFalse(validator::checkfield('+44 870 085 2038', array('type' => "text", 'validation' => "phone")), "Valid input failed");
+		$this->assertEquals("Not a valid telephone number", validator::checkfield('apple', array('type' => "text", 'validation' => "phone")), "Wrong validation message returned");
+	}
+	public function testRegexValidationType() {
+		$this->assertFalse(validator::checkfield('aaaa', array('type' => "text", 'validation' => "/^a+$/")), "Valid input failed");
+		$this->assertEquals("Not the correct format", validator::checkfield('abcd', array('type' => "text", 'validation' => "/^a+$/")), "Wrong validation message returned");
+	}
+}

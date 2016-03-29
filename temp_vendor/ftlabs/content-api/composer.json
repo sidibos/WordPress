@@ -1,0 +1,21 @@
+{
+	"name": "ftlabs/content-api",
+	"description": "FT Content API client",
+	"autoload": {
+		"psr-4": {
+			"FTLabs\\": "src/"
+		}
+	},
+	"repositories": [
+		{
+			"type": "composer",
+			"url": "http://composer.labs.ft.com/"
+		}
+	],
+	"require": {
+		"ftlabs/exception": "1.*",
+		"ftlabs/http": "2.*",
+		"ftlabs/logger": "1.*",
+		"ftlabs/memcache": "1.*"
+	}
+}

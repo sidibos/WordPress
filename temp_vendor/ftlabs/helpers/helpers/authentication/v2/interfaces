@@ -1,0 +1,35 @@
+<?php
+
+interface AssankaAuthenticationInterface {
+
+	/**
+ * Require anonymous users to log in
+ *
+ * User must be offered an interactive login process to authenticate them if it is not possible to authenticate them automatically.  Class must not return null from the authenticate method - it must either return a valid user ID, or exit (which may be following the rendering of a login page, or a redirect to a sign in service, or display of a barrier page)
+ */
+	const REQUIRE_AUTHENTICATED_USER = 1;
+
+	/**
+	 * Do not store session state
+	 *
+	 * Class must NOT use the active PHP session to cache authentication.  If not set, class may, if applicable (and if a PHP session is enabled) use the session to store the active user ID, and then simply return it on subsequent calls to the authenticate method.  Class must not turn on session handler if it is not already enabled, and must not preserve state in any way other than via the PHP session handler.  Examples of how this affects the behaviour of the authenticate method for different kinds of authentication:
+	 */
+	const STATELESS = 2;
+
+	public static function authenticate();
+	public static function logout(); 
+}
+
+interface AssankaUserDataStoreInterface {
+
+	const POPULATE_EMPTY = 1;
+	const POPULATE_LIVE = 2;
+	
+	public function __construct($populatemode);
+
+	// Getdata must return all allowable fields, with null values if necessary, so that the app knows what fields are settable.
+	public function getData($keypath);   // Must return all data, not just data actually set, 
+	public function setData($keypath, $value);   // Will throw exception if key is not writable
+}
+
+?>

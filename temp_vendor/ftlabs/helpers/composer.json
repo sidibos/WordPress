@@ -1,0 +1,15 @@
+{
+	"name": "ftlabs/helpers",
+	"description": "Composer-compatible FT Labs core helpers",
+	"autoload": {
+		"psr-4": {
+			"FTLabs\\": "src/"
+		}
+	},
+	"repositories": [
+		{
+			"type": "composer",
+			"url": "http://composer.labs.ft.com/"
+		}
+	]
+}

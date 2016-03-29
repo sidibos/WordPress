@@ -1,0 +1,499 @@
+<?php
+/*
+########################################################
+CMS library - provides authentication functions, includes
+required files, and stores a few common functions.
+
+13th May 2005
+Rowan Beentje
+Assanka Ltd
+########################################################
+*/
+
+// On load, check auth for the cms sections
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once($_SERVER["CORE_PATH"]."/web/admin/v3/auth");
+
+// This function checks whether a user (defaulting to the logged-in
+// user) is permitted to perform a function at all to a particular folder.
+// Tasks: viewpage, createpage, editpage, publishpage, deletepage, sortpage,
+// disablepage, viewpagehistory, viewasset, createasset, editasset,
+// publishasset, deleteasset, disableasset, viewassethistory
+function cmsCheckIfAuth($task, $tag = "", $username = "", $autoerror = false, $siteid = false) {
+	global $db, $cmspermissions, $cmssites;
+	$auth = false;
+	$permissionsArray = array();
+	
+	
+	// Set up global caches if they don't already exist
+	if (!isset($cmsusers)) $cmsusers = array();
+	if (!isset($cmssites)) $cmssites = array();
+	
+	// If no username is provided, check for the htaccess username
+	// to determine if the current user is logged in
+	if (!$username) {
+		$username = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+		if (!$username) {
+			if ($autoerror or (strpos($_SERVER["PATH_TRANSLATED"], $_SERVER["CORE_PATH"]."/web/admin/v3/cms/") !== false)) {
+				global $page;
+			
+				// If the user is not logged in, forward the user to the admin homepage to prompt them to log in,
+				// with an appropriate alert.
+				$page->alert("You have been redirected to the home page as you were not logged in.  <a href=\"".$_SERVER["REQUEST_URI"]."\">Click here to return to the requested page</a>.");
+				header("Location: ".$_SERVER["ADMIN_AREA_PATH"]);
+				exit;
+			} else {
+				return false;
+			}
+		}
+	}
+	
+	checkIfAuth("content", $username);
+	if ($tag and (substr($tag, -1) != "/")) $tag .= "/";
+
+	// Populate cache if it's not already set
+	if (!count($cmssites)) {
+		$siteresult = $db->query("SELECT id, name FROM out_sites ORDER BY id ASC");
+		while ($site = $db->fetchrow($siteresult)) {
+			$cmssites[$site["id"]] = $site;
+		}
+	}
+
+	// First Check for multiple sites in the database
+	$multiSite = false;
+	if (!session_id()) session_start();
+	if (!$siteid) $siteid = $_SESSION["outlinesiteid"];	
+	if (count($cmssites) > 1) {
+		$multiSite = true;
+	}
+	if (($task == "createasset") || ($task == "viewasset") || ($task == "editasset") || ($task == "publishasset") || ($task == "deleteasset") || ($task == "disableasset") || ($task == "viewassethistory")) $multiSite = false;
+	if ($multiSite && !$siteid) trigger_error("This Outline installation appears to have multiple sites, yet a permissions check is being made without supplying a site id.", E_USER_ERROR);
+
+	// Populate the permissions cache for this user if it's not already set
+	if (empty($cmspermissions[$username])) {
+		$usercheck = $db->query("SELECT p.tag, p.role, p.siteid FROM out_permissions p LEFT JOIN out_sites s ON p.siteid=s.id WHERE htaccessuser='".$db->sqlenc($username)."' ORDER BY p.role='no access' DESC, p.role='author' DESC, p.role='publisher' DESC, siteid ASC");
+		while ($row = $db->fetchrow($usercheck)) {
+			$cmspermissions[$username][$row["siteid"]][] = $row;
+		}
+		
+		// If zero rows are found, permission is assumed to be publisher - for
+		// simplicity and user confusion reasons!
+		if (empty($cmspermissions[$username])) $cmspermissions[$username] = array(-1 => array(0 => array("tag"=>"", "role"=>"publisher", "siteid"=>-1)));
+	}
+	
+	// Create a set of permissions for this request
+	$userpermissions = $cmspermissions[$username];
+	if ($multiSite) {
+		foreach ($userpermissions as $key=>$value) {
+			if ($key != -1 and $key != $siteid) unset($userpermissions[$key]);
+		}
+		if ($siteid and !count($userpermissions[$siteid]) and !count($userpermissions[-1])) $userpermissions[$siteid] = array(0 => array("tag"=>"", "role"=>"no access", "siteid"=>$siteid));
+	}
+
+	// If rows are found, build an array with the length of the tag where the
+	// tag matches, reverse key sort the array, and take the first item.
+	// This will be the applicable level of permissions for the page.
+	if (count($userpermissions)) {
+		foreach ($userpermissions as $permissionssite) {
+			foreach ($permissionssite as $permission) {
+				if ($permission["tag"] == "") {
+					if (!empty($permissionsArray[0])) $permissionsArray[0] = $permission["role"];
+					else array_unshift(&$permissionsArray, $permission["role"]);
+				} else if (strpos($tag, $permission["tag"]) === 0) {
+					$permissionsArray[strlen($permission["tag"])] = $permission["role"];
+				}
+			}
+		}
+		krsort($permissionsArray);
+		$auth = each($permissionsArray);
+		$auth = $auth["value"]; // Each returns data in a specific format.
+	
+	// If zero rows were found, permission is assumed to be publisher - for
+	// simplicity/user confusion reasons!
+	} else {
+		$auth = "publisher";
+	}
+
+	// Check for assets being enabled if necessary
+	if ((strpos($task, "asset") !== false) && !cmsIsFunctionalityEnabled("assets")) {
+		if ($autoerror) trigger_error("This project does not have asset access; please contact your system administrator.", E_USER_ERROR);
+		else return false;
+	}
+
+	//Switch according to supplied task, returning false or value
+	switch ($task) {
+	case "viewasset":
+		if (!cmsIsFunctionalityEnabled("assets")) return false;
+	case "viewpage":
+		return true;
+	break;
+	case "createpage":
+	case "editpage":
+	case "viewpagehistory":
+	case "createasset":
+	case "editasset":
+	case "viewassethistory":
+		if (($auth == "author") || ($auth == "publisher")) {
+			return $auth;
+		} else {
+			if ($autoerror) {
+				$msg = "<h2>Access restricted</h2>";
+				$msg .= "<p style=\"padding: 10px\">You do not have permission to perform this task.  Please contact your system administrator for more information and to add the necessary permission to your user account.</p>";
+				echo $msg;
+				exit;
+			} else {
+				return false;
+			}
+		}
+	break;
+	case "publishasset":
+	case "publishpage":
+	case "deletepage":
+	case "sortpage":
+	case "disablepage":
+	case "deleteasset":
+	case "disableasset":
+		if ($auth == "publisher") {
+			return $auth;
+		} else {
+			if ($autoerror) {
+				$msg = "<h2>Access restricted</h2>";
+				$msg .= "<p style=\"padding: 10px\">You do not have permission to perform this task.  Please contact your system administrator for more information and to add the necessary permission to your user account.</p>";
+				echo $msg;
+				exit;
+			} else {
+				return false;
+			}
+		}
+	break;
+	}
+}
+
+// Function to return whether a particular level of functionaity is enabled
+function cmsIsFunctionalityEnabled($functionality) {
+	global $page;
+	
+	if (empty($page->outlineenabled)) return false;
+	
+	switch ($functionality) {
+		case "taskdashboard":
+			if (in_array($page->outlineenabled, array("multiuser", "multisite"))) return true;
+		break;
+		case "versionhistory":
+			if (in_array($page->outlineenabled, array("multiuser", "multisite", "singleuserplus"))) return true;
+		break;
+		case "drafts":
+			if (in_array($page->outlineenabled, array("multiuser", "multisite"))) return true;
+		break;
+		case "versiondiff":
+			if (in_array($page->outlineenabled, array("multiuser", "multisite", "singleuserplus"))) return true;
+		break;
+		case "assets":
+			if (in_array($page->outlineenabled, array("multiuser", "multisite", "singleuserplus"))) return true;
+		break;
+		case "multipleusers":
+			if (in_array($page->outlineenabled, array("multiuser", "multisite"))) return true;
+		break;
+		case "multiplesites":
+			if (in_array($page->outlineenabled, array("multisite"))) return true;
+		break;
+	}
+	return false;
+}
+
+// A function to recursively delete a directory, by stepping through
+// the contents of the directory, deleting files, and stepping into
+// folders.  Necessary because certain changes to the CMS require
+// deleting the entire site cache (eg - changes to the navigation structure),
+// and because the standard php functions don't remove folders with items
+// in them.
+// Note: this function intentionally chokes if soft/hard links are found.
+function recursiveDelete($dirName, $repetition = 0) {
+	checkIfAuth("content");
+	if ($repetition > 10) return false;
+	if (empty($dirName)) return true;
+	if (file_exists($dirName)) {
+		$files = getFolderContentsAsArray($dirName);
+		if ($files) {
+			foreach ($files as $file) {
+				if (is_dir($dirName.'/'.$file)) {
+					if (!recursiveDelete($dirName.'/'.$file, $repetition)) return false;
+				} else if (is_file($dirName.'/'.$file)) {
+					@unlink($dirName.'/'.$file);
+				}
+			}
+		}
+		if (getFolderContentsAsArray($dirName)) return recursiveDelete($dirName, ++$repetition);
+		else @rmdir($dirName);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+// Function to delete an on-disk cache and to update the out_sites datemodified
+// to trigger a global update across multiple servers
+function outlineDeleteCache($siteid = false) {
+	global $db;
+	
+	if (is_numeric($siteid)) {
+		recursiveDelete($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmscache/".$siteid."/");
+		$db->query("UPDATE out_sites SET datechanged=NOW() WHERE id=".$siteid);
+	} else {
+		recursiveDelete($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmscache/");
+		$db->query("UPDATE out_sites SET datechanged=NOW()");
+	}
+}
+
+// Function to delete the cache for a specific tag
+function outlineDeleteCacheForPage($tag, $languageisocode, $siteid) {
+	if (!is_numeric($siteid)) return false;
+	$languageisocode = str_replace("..", "", $languageisocode);
+	$tag = str_replace("..", "", $tag);
+
+	recursiveDelete($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmscache/".$siteid."/".$languageisocode."/".$tag."/");
+}
+
+// Get folder contents/listing as an array of filenames
+function getFolderContentsAsArray($dirName) {
+	if (empty($dirName)) return false;
+	clearstatcache();
+	if (!file_exists($dirName) || !is_dir($dirName)) return false;
+	$files = array();
+	$dir = dir($dirName);
+	while (false !== ($file = $dir->read())) {
+		if ($file != '.' && $file != '..') $files[] = $file;
+	}
+	$dir->close();
+	if (!count($files)) $files = false;
+	return $files;
+}
+
+// A function to store the last used tag in a session variable.  A very
+// simple function for now, but may become more complex later.  The stored
+// value is used when constructing the index page to automatically expand
+// folders to display the last page worked on.
+function saveLastSelectedPage($tag) {
+	session_start();
+	$_SESSION['lastpage'] = $tag;
+}
+
+// This function outputs the outline admin box on public pages, including
+// all necessary style information.
+function insertOutlineBox($pageTag, $localContentID, $pageHTML) {
+	global $db;
+	
+	// Generate a tag for the parent page
+	if ((strpos($pageTag, "/") === false) || $pageTag == "homepage") $parenttag = "";
+	else $parenttag = substr($pageTag, 0, strpos($pageTag, "/"));
+	
+	if (!checkIfAuth("content", $_SESSION['outlineadmin'], false)) return $pageHTML;
+	$siteIDRow = $db->query("SELECT siteid FROM out_localcontent l LEFT JOIN out_items i ON l.itemid=i.id WHERE l.id='".$db->sqlenc($localContentID)."'");
+	if (mysql_num_rows($siteIDRow)) $usercheck = cmsCheckIfAuth("editpage", $pageTag, $_SESSION['outlineadmin'], false, mysql_result($siteIDRow, 0, "siteid"));
+	else $usercheck = false;
+	if ($usercheck) {
+		$adminToolbar = "
+			<style type=\"text/css\">
+				.outlineadmin li { height: 15px; overflow: hidden; margin: 0; padding: 0; background: none; line-height: 15px; }
+				.outlineadmin a { height: 15px; font-family: verdana, tahoma, sans-serif;
+margin: 0; padding: 0; font-size: 11px; text-decoration: none; color: blue; font-weight: normal; line-height: 16px; background: none; }
+				.outlineadmin a:visited { text-decoration: none; color: blue; font-weight: normal; }
+				.outlineadmin a:hover { text-decoration: underline;}
+				#fixed { position: fixed; bottom: 25px; right: 25px; background: rgb(240, 240, 240) url(".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/outlineadmin.jpg) 0% 0% no-repeat; z-index: 400; width: 160px; height: 165px; }
+				* html #fixed { position: absolute; }
+			</style>
+			<div id=\"fixed\">
+			<ul class=\"outlineadmin\" style=\"margin: 0; padding: 35px 0px 0px 20px;list-style-type: none; text-align: left;\">
+			<li><a href=\"".$_SERVER["ADMIN_AREA_PATH"]."/\">Switch to Admin Site</a></li>
+			<li><a href=\"".$_SERVER["ADMIN_AREA_PATH"]."/cms/edit?id=$localContentID\">Edit this page</a></li>
+			".(($usercheck == "publisher")?"<li><a href=\"".$_SERVER["ADMIN_AREA_PATH"]."/cms/disable?id=$localContentID\">Disable this page</a></li>":"")."
+			".((cmsIsFunctionalityEnabled("versionhistory"))?"<li><a href=\"".$_SERVER["ADMIN_AREA_PATH"]."/cms/viewhistory/$localContentID\">View page history</a></li>":"")."
+			".(($usercheck == "publisher")?"<li><a href=\"javascript:void(0)\" onclick=\"if (confirm('Are you sure you want to delete this page?  This action cannot be undone.')) window.location.href = '".$_SERVER["ADMIN_AREA_PATH"]."/cms/delete?id=$localContentID'\">Delete this page</a></li>":"")."
+			<li><a href=\"".$_SERVER["ADMIN_AREA_PATH"]."/cms/new?tag=$pageTag\">Create a new child</a></li>
+			".(($parenttag)?"<li><a href=\"".$_SERVER["ADMIN_AREA_PATH"]."/cms/new?tag=$parenttag\">Create a new sibling</a></li>":"")."</ul></div>
+			<script type=\"text/javascript\">
+			if (document.all && !window.opera && document.body && (typeof document.body.style.maxHeight == 'undefined')) {
+				if(document.documentElement && document.documentElement.clientHeight) refer = document.documentElement;
+				else refer = document.body;
+				window.onscroll = function() { document.getElementById(\"fixed\").style.top = refer.scrollTop + refer.clientHeight - 190; document.getElementById(\"fixed\").style.right = 25; };						
+			}
+			</script>
+
+			";
+		$pageHTML = substr($pageHTML, 0, strpos($pageHTML, "</body>")) . $adminToolbar . substr($pageHTML, strpos($pageHTML, "</body>"));
+	}
+	return $pageHTML;
+}
+
+// This function provides a method to extend the core functionality of the cms
+// to allow project-specific fields, functions and other code to be used and
+// inserted.  This function works in conjunction with an $cmsExtend array in
+// global, containing lists of functions and queries.  Note that the array of
+// variables is a reference, and the array contents should also be references.
+// This function will return a boolean status, unused (except in the file '/sort') 
+// but on principle.
+function extendCMS($actionToExtend, &$varArray) {
+	global $cmsExtend;
+
+	// First check the variables array is present and an array
+	if (!is_array($varArray)) return false;
+	
+	// Return false if the action requested does not exist
+	if (empty($cmsExtend) or !isset($cmsExtend[$actionToExtend])) return false;
+
+	return call_user_func_array($cmsExtend[$actionToExtend], $varArray);
+}
+
+// This function fetches pages and files for display in a tree structure
+function outlineGetChildren($sqlTerm, $treeDepth, $languageisocode, $dateFormat, $timeFormat, $siteid, $outputToPage, $includedrafts, $isbrowser = false) {
+	global $page, $db;
+	if (!$outputToPage) $out = "";
+	
+	// Fetch all the direct children, and drafts, in one resultset
+	$result = $db->query("SELECT out_items.id as itemid, out_localcontent.id as contentid, out_versions.id AS versionid, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as datecreated, authoruser, draftuser, a.name AS author, tag, visibility, islive,out_items.sortindex,out_items.parentid FROM out_items LEFT JOIN out_localcontent ON out_items.id = out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id = out_versions.localcontentid LEFT JOIN cfg_adminusers a ON out_versions.authoruser=a.htaccessuser LEFT JOIN cfg_adminusers d ON out_versions.draftuser=d.htaccessuser WHERE ".$sqlTerm." AND type='page' AND (islive=1".(($includedrafts)?" OR draftuser IS NOT NULL":"").") AND siteid='".$siteid."' AND languageisocode='".$languageisocode."' AND (draftuser is null or d.name is not null) ORDER BY draftuser IS NULL DESC, sortindex, IF(draftuser IS NULL, title, draftuser!='".$db->sqlenc($_SESSION["outlineadmin"])."') ASC, datecreated ASC");
+
+	// Set up a variable to store all rows, for grouping of live and drafts, before outputting at end
+	$rowsarray = array();
+	
+	while ($row = $db->fetchrow($result)) {
+		$islive = (($row["islive"] and !$row["draftuser"])?true:false);
+		if ($isbrowser) {
+			if ($_GET["type"] == "permissions") {
+				$drafts = false;
+				$iseditable = true;
+			} else if ($_GET["type"] != "link") {
+				if ($_GET["extra"] and (strpos("/".$row["tag"]."/", $_GET["extra"]."/") !== false)) $iseditable = false;
+				else if (($row["draftuser"] == "") || ($row["draftuser"] == $_SESSION["outlineadmin"])) $iseditable = (cmsCheckIfAuth("editpage", $row["tag"], false, false, $siteid))?true:false;
+				else $iseditable = false;
+			} else {
+				if ($row["draftuser"] or ($row["visibility"]=="inaccessible")) $iseditable = false;
+				else $iseditable = true;
+			}
+		} else {
+			$iseditable = (($row["draftuser"] == "")?((cmsCheckIfAuth("editpage", $row["tag"], false, false, $siteid))?true:false):false);
+		}
+		
+		// If this row doesn't already exist in the row array, create an entry for it
+		if (empty($rowsarray[$row["contentid"]])) {
+		
+			// Before insertion, check whether this row has any children
+			$result2 = $db->query("SELECT out_items.id FROM out_items WHERE parentid=".$row["itemid"]." LIMIT 0,1");
+			$isfolder = ((mysql_num_rows($result2))?true:false);
+			
+			// The presence of rows indicates children; if so, display an expandable folder.
+			// Also check the saved page tag to see whether the folder should be loaded expanded.
+			if ($isfolder) {
+				$isdeleteable = false;
+				$issortable = ((cmsCheckIfAuth("sortpage", $row["tag"], false, false, $siteid))?true:false);
+				$folderhtml = false;
+				if (!empty($_SESSION["lastpage"]) or ($isbrowser and !empty($_GET["tag"]))) {
+					$savedTag = (($isbrowser)?$_GET["tag"]:$_SESSION["lastpage"]);
+					$savedTag = substr($savedTag, 0, strlen($savedTag) - 1);
+					if (strpos($savedTag, $row["tag"]) !== false) {
+	
+						// The folder should be loaded expanded - fetch the html.
+						$folderhtml = outlineGetChildren("parentid=".$row["itemid"], $treeDepth+1, $languageisocode, $dateFormat, $timeFormat, $siteid, false, $includedrafts, $isbrowser);
+					}
+				}
+			} else {
+				$folderhtml = false;
+				$isdeleteable = (($row["draftuser"] == "")?((cmsCheckIfAuth("deletepage", $row["tag"], false, false, $siteid))?true:false):false);
+				$issortable = false;
+			}
+		
+			// Create the row entry
+			$rowsarray[$row["contentid"]] = array("contentid"=>$row["contentid"], "title"=>$row["title"], "tag"=>$row["tag"], "author"=>$row["author"], "datecreated"=>$row["datecreated"], "iseditable"=>$iseditable, "isfolder"=>$isfolder, "folderhtml"=>$folderhtml, "issortable"=>$issortable, "isdeleteable"=>$isdeleteable, "islive"=>$islive, "visibility"=>$row["visibility"], "isbrowser"=>$isbrowser, "drafthtml"=>"", "firstversionid"=>$row["versionid"],"sortindex"=>$row["sortindex"],"parentid"=>$row["parentid"]);
+		}	
+		
+		// Append a draft record to the row output if this row is a draft
+		if ($row["draftuser"]) $rowsarray[$row["contentid"]]["drafthtml"] .= getDraftHTML($rowsarray[$row["contentid"]]["firstversionid"], $row["versionid"], $row["draftuser"], $row["authoruser"], $row["author"], false);
+	}
+
+	// Alter the rows array if appropriate
+	$extendarray = array(&$_SESSION,&$_GET,&$rowsarray);
+	extendCMS("getChildrenRowsComplete",$extendarray);
+	
+	// Loop through the rows array and output each row
+	$out="";
+	foreach ($rowsarray as $row) {
+		$rowhtml = getTreeViewRow($row["contentid"], $row["title"], $row["tag"], $row["author"], $row["datecreated"], $row["iseditable"], $row["isfolder"], $row["folderhtml"], $row["issortable"], $row["isdeleteable"], $row["islive"], $row["visibility"], $row["drafthtml"], $row["isbrowser"]);
+
+		if ($outputToPage) $page->addContent("content", $rowhtml);
+		else $out .= $rowhtml;
+	}
+	return $out;
+}
+
+// Output HTML for a row in an outline tree view
+function getTreeViewRow($id, $title, $tag, $author, $datecreated, $iseditable, $isfolder, $folderhtml, $issortable, $isdeleteable, $islive, $visibility, $drafthtml, $isbrowser, $isasset = false) {
+	$type = (($isasset)?"asset":"page");
+
+	$title = str_replace("\"", "&quot;", $title);
+	
+	$out = "";
+
+	// Outline extension - extra CSS classes for this row
+	$extendarray = array(&$id);
+	$extrarowcssclasses = extendCMS("treeViewRowGetExtraCssClasses",$extendarray);
+
+	$out .= "<div style=\"clear: both;\" onclick=\"oltree.selectrow(event, '".$id."', '".addslashes($title)."', '".$tag."', ".(($iseditable)?"true":"false").", ".(($issortable)?"true":"false").", ".(($isdeleteable)?"true":"false").", '".addslashes($author)."', '".addslashes($datecreated)."', ".(($islive)?"true":"false").")\">";
+	$out .= "<div class=\"tdb tdnormal ".($extrarowcssclasses?$extrarowcssclasses:"")."\" id=\"row".$id."\">";
+	if (!$isasset and $tag != "homepage") {
+		$out .= "<div class=\"treepad\">";
+		if ($isfolder) $out .= "<div class=\"disc disc".(($folderhtml)?"on":"off")."\" id=\"disc".$id."\" onmousedown=\"document.getElementById('disc".$id."').className = 'disc discdown';\" onmouseup=\"oltree.toggledisc(".$id.")\">&nbsp;</div>";
+		else $out .= "&nbsp;";
+		$out .= "</div>";
+	}
+	if ($isasset) $imagename = "asset".(($islive)?"":"drafthidden");
+	else $imagename = (($islive)?(($isfolder)?"folder":"page"):(($isfolder)?"draftfolder":"drafthidden"));
+	if ($islive) $imagename .= (($visibility == "inaccessible")?"hidden":(($visibility == "hidden")?"nonav":""));
+	$out .= "<div class=\"treepad\"><img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/icon16_".$imagename.".gif\" width=\"16\" height=\"14\" /></div>";
+	$out .=	"<span class=\"ctext".((!$islive or ($visibility == "0" or $visibility == "inaccessible"))?" hidden":"")."\">".$title."</span>";
+	if ($drafthtml) $out .= "<div class=\"draftdiv\">".$drafthtml."</div>";
+	else $out .= $drafthtml;
+	$out .= "</div>";
+	if ($isbrowser and ($tag == $_GET["tag"])) $out .= "<script type=\"text/javascript\">oltree.selectrow(false, ".$id.", '".$title."', '".$tag."', ".($iseditable?"true":"false").");</script>";
+	$out .= "</div>";
+	if ($isfolder) {
+		$out .= "<div id=\"div".$id."\" style=\"display: ".(($folderhtml)?"block":"none").";  width: 100%; float: left;\"><div id=\"innerdiv".$id."\" style=\"padding-left: 20px;\">";
+		if ($folderhtml) $out .= $folderhtml;
+		$out .= "</div></div>";
+	}
+	return $out;	
+}
+
+// Return HTML for a single draft for use in a tree view
+function getDraftHTML($rowversionid, $versionid, $draftuser, $authoruser, $author, $isasset) {
+	$type = (($isasset)?"asset":"page");
+	$ownedbyme = ($draftuser == $_SESSION["outlineadmin"])?true:false;
+	$writtenbyme = ($authoruser == $_SESSION["outlineadmin"])?true:false;
+	$behaviors = "onmouseover=\"oltree.outlineShowDraftDiv('".$versionid."');\"  onmouseout=\"oltree.outlineHideDraftDiv('".$versionid."');\"";
+
+	$out = "";
+	$out .= "<div class=\"draftholder\" id=\"draftholder".$versionid."\">";
+	if ($ownedbyme) $out .= "<a href=\"edit?id=".$versionid."&amp;type=draft\" ".$behaviors." class=\"draftlink\">";
+	$out .= "<img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/icon16_draft".(($ownedbyme)?(($writtenbyme)?"blue":"red"):"hidden")."small.gif\" ".((!$ownedbyme)?$behaviors:"")." width=\"14\" height=\"14\" />";
+	if ($ownedbyme) $out .= "</a>";
+	$out .= "<div class=\"draftpopup\" id=\"draftdiv".$versionid."\" ".((!$ownedbyme)?"style=\"color: gray\"":"")."><div>";
+
+	if ($ownedbyme) $out .= ($writtenbyme?"My draft":$author." sent me a draft")." of this".(($rowversionid == $versionid)?" new":"")." ".$type." (available to edit)";
+	else if ($writtenbyme) $out .= "My draft of this".(($rowversionid == $versionid)?" new":"")." ".$type." has been sent for review.";
+	else $out .= $author." has".(($rowversionid == $versionid)?" created this new ".$type." as a draft":" a draft of this page");
+
+	$out .=	"</div></div></div>";
+
+	return $out;
+}
+
+// Ensure folder permissions are all set correctly
+function outlineCheckPermissions() {
+	$folderchecks = array($_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmsfiles", $_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmsfiles/File", $_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmsfiles/Image", $_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmsfiles/Flash", $_SERVER["DOCUMENT_ROOT"]."/lib/tmp/cmsfiles/Media");
+	$old_umask = umask(0);
+	foreach ($folderchecks as $path) {
+		if (!file_exists($path)) mkdir($path, 0777);
+		if (!is_writable($path)) chmod($path, 0777);
+	}
+	umask($old_umask);
+}
+
+?>

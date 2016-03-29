@@ -1,0 +1,62 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+	<title>You do not have access to this feature</title>
+	<meta name="robots" content="noindex, nofollow" />
+	<meta name="author" content="Assanka Limited" />
+	<style type="text/css">
+	body { text-align: center; margin: 0; padding: 10px; font-family: "Gill Sans", Trebuchet MS, sans-serif; color: #555; font-size: 14px; line-height: 160%;}
+	div.errcontentcontainer { width:720px; text-align:left; margin: 20px auto 10px auto; padding: 15px; }
+	div.rightslist { background-color: #f0f0f0; margin-bottom: 10px; padding: 10px 10px 0 10px; border: 1px solid grey }
+	div.rightslist .title { float:left; font-size: 16px; padding-top: 3px; max-width: 200px; }
+	div.rightslist .right { margin-left: 200px; height: 40px; }
+	div.rightslist .rightlabel { float:left; font-size: 14px; padding: 3px 8px; font-weight: bold; color: white; -moz-border-radius: 3px; border-radius: 3px; -webkit-border-radius: 3px }
+	div.rightslist .rightheld { border: 1px solid #336633; background-color: #009900 }
+	div.rightslist .rightnotheld { border: 1px solid #990000; background-color: #CC0000 }
+	div.rightslist .note { font-size: 11px; float:left; padding: 5px 0 0 10px; color: #777 }
+	div.rightslist .notenotheld { color: #990000 }
+	h1 { color: #a72b00; font-size: 35px; font-weight: normal; }
+	h2 { font-size: 19px; margin: 25px 0 7px 0; font-weight:normal }
+	p { color: #333; margin-bottom: 12px; margin-top: 0px; }
+	blockquote {font-family: monospace }
+	</style>
+</head>
+<body>
+<div class="errcontentcontainer">
+	<h1>You are not allowed to use this feature</h1>
+	<h2>Why not?</h2>
+	<p>Your user account has a number of privileges or <strong>rights</strong> which allow you to do particular tasks or access certain features. The feature you just tried to access requires a right which you do not have. This is shown below.</p>
+	<div class="rightslist">
+		<span class="title">
+		<!--@BLOCK:1|ifless:require:0-->Extra rights you need<!--@ENDBLOCK:1-->
+		<!--@BLOCK:1|ifmore:require:0-->You need at least one of the following rights:<!--@ENDBLOCK:1-->
+		</span>
+		<!--@BLOCK:1|repeatfor:rights-->
+		<div class="right">
+			<!--@BLOCK:2|iftrue:isheld-->
+				<div class="rightlabel rightheld"><!--@right--></div>
+				<div class="note">You've got this one</div>
+			<!--@ENDBLOCK:2-->
+			<!--@BLOCK:2|iffalse:isheld-->
+			<div class="rightlabel rightnotheld"><!--@right--></div>
+			<!--@BLOCK:3|ifless:require:0--><div class="note notenotheld">You need this right to continue</div><!--@ENDBLOCK:3-->
+			<!--@ENDBLOCK:2-->
+		</div>
+		<!--@ENDBLOCK:1-->
+	</div>
+
+	<h2>What should I do?</h2>
+	<p>To request access to this feature, contact your local administrator, who can grant the necessary rights.  <!--@BLOCK:2|iftrue:name-->The person responsible for this system is listed as:</p>
+	<blockquote>
+	<strong><!--@name--></strong><br>
+	<!--BLOCK:1|iftrue:email-->
+	Email: <a href="mailto:<!--@email-->"><!--@email--></a>
+	<!--ENDBLOCK:1-->
+	<!--@phone|prepend:"<br/>Phone: "-->
+	</blockquote><!--@ENDBLOCK:2-->
+	<p>Alternatively, you may <a href="javascript:history.go(-1)">return to the previous page</a>.</p>
+
+</div>
+
+</body>
+</html>
