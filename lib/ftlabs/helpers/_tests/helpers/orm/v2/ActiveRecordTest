@@ -1,0 +1,369 @@
+<?php
+/**
+ * Tests for the Orm ActiveRecord abstract class
+ *
+ * $Revision$
+ * $Date$
+ * $Author$
+ *
+ * @codingstandard Assanka
+ * @author Luke Blaney <luke.blaney@assanka.net>
+ * @copyright Assanka Limited [All rights reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'] . '/vendor/autoload.php';
+
+require_once MOCK_DIR."MockActiveRecordA";
+require_once MOCK_DIR."MockActiveRecordB";
+
+class ActiveRecordTest extends PHPUnit_Framework_TestCase {
+
+	private $db;
+
+	private static $publicdata = array(
+		'name' => "Balthazar",
+		'fav_season' => "aut",
+		'height' => "234",
+	);
+	private static $privatedata = array(
+		'bio' => "ᐊᓕᒍᖅ ᓂᕆᔭᕌᖓᒃᑯ ᓱᕋᙱᑦᑐᓐᓇᖅᑐᖓ",
+		'alive' => true,
+		'date_of_birth' => "yesterday",
+		'date_created' => "now",
+		'started_race_at' => "23rd December 2005 17:12:34pm",
+		'bedtime' => "5:10pm",
+		'external_id_code' => "k4fgJb98ID",
+		'role' => "In charge",
+		'language' => "Pictish",
+		'password' => "abc123",
+		'cv' => "**My CV**\n\nI did lots of work and stuff",
+		'divider' => null,
+	);
+	private static $otherdata = array(
+		'hair_colour' => "ginger",
+		'number_of_legs' => 3,
+	);
+	private static $seconddata = array(
+		'name' => "Raj",
+		'fav_season' => "sum",
+		'height' => "5048",
+		'bio' => "A long time ago...",
+		'alive' => false,
+		'date_of_birth' => "1000BC",
+		'date_created' => "now",
+		'started_race_at' => "23rd December 2005 17:12:34pm",
+		'bedtime' => "5:10pm",
+		'external_id_code' => "NSUxn97Wgy",
+		'role' => "In charge",
+		'language' => "Egyptian",
+		'password' => "NaWEqR8Q5b",
+		'cv' => "**My CV**\n\nI did lots of work and stuff",
+		'divider' => null,
+	);
+
+	public function setUp() {
+		$this->db = new FTLabs\MySqlConnection($_SERVER['DB_HOST'], $_SERVER['DB_USER'], $_SERVER['DB_PASS'], $_SERVER['DB_NAME']);
+		$this->db->query("SET FOREIGN_KEY_CHECKS = 0;");
+		$this->db->query("CREATE TABLE IF NOT EXISTS `people` (
+		  `id` int(11) NOT NULL auto_increment,
+		  `name` varchar(255) collate utf8_bin default NULL,
+		  `bio` text collate utf8_bin,
+		  `alive` tinyint(1) default NULL,
+		  `most_fav_food_name` varchar(255) collate utf8_bin default NULL,
+		  `date_of_birth` date default NULL,
+		  `date_created` datetime default NULL,
+		  `started_race_at` datetime default NULL,
+		  `bedtime` time default NULL,
+		  `notification_time` time default NULL,
+		  `external_id_code` varchar(25) collate utf8_bin default NULL,
+		  `role` varchar(255) collate utf8_bin default NULL,
+		  `language` varchar(255) collate utf8_bin default NULL,
+		  `fav_season` enum(%s,%s,%s,%s) collate utf8_bin default NULL,
+		  `password` varchar(255) collate utf8_bin default NULL,
+		  `cv` text collate utf8_bin,
+		  `profile_pic` varchar(255) collate utf8_bin default NULL,
+		  `birth_certificate` varchar(255) collate utf8_bin default NULL,
+		  `divider` tinyint(4) default NULL,
+		  `height` float default NULL,
+		  UNIQUE KEY `id` (`id`),
+		  CONSTRAINT `FK_most_fav_food` FOREIGN KEY (`most_fav_food_name`) REFERENCES `food` (`name`)
+		) ENGINE=INNODB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+		", 'Summer', 'Winter', 'Autumn', 'Spring');
+
+		$this->db->query("CREATE TABLE IF NOT EXISTS `food` (
+		  `name` varchar(255) collate utf8_bin default NULL,
+		  UNIQUE KEY `name` (`name`)
+		) ENGINE=INNODB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+		");
+		$this->db->query("CREATE TABLE IF NOT EXISTS `people_foods` (
+		  `userid` int(11) NOT NULL,
+		  `foodname` varchar(255) collate utf8_bin default NULL,
+		  CONSTRAINT `FK_people_foods_people` FOREIGN KEY (`userid`) REFERENCES `people` (`id`),
+		  CONSTRAINT `FK_people_foods_food` FOREIGN KEY (`foodname`) REFERENCES `food` (`name`)
+		) ENGINE=INNODB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+		");
+		$this->db->query("SET FOREIGN_KEY_CHECKS = 1;");
+
+		OrmBase::initDB($this->db, $this->db);
+		MockActiveRecordA::setProjName("assankacoretest");
+		MockActiveRecordB::setProjName("assankacoretest");
+	}
+
+	public function testCanCreateObjects() {
+		foreach (array("MockActiveRecordA", "MockActiveRecordA") as $class) {
+			$obj = new $class();
+			$this->assertInstanceOf($class, $obj, "Object is of wrong type");
+		}
+	}
+
+	public function testObjectsGetCached() {
+		$obj = new MockActiveRecordA();
+		$memcache = MockActiveRecordA::getMemcache();
+		$obj->save();
+		$id = $obj->id;
+		$cachekey = $obj->getCacheKey();
+		$this->assertNotEquals(false, $memcache->get($cachekey), "Object not added to memcache");
+		$this->assertEquals($memcache->get($cachekey), $obj, "Object incorrectly stored in memcache");
+		$newobj = MockActiveRecordA::createFromKey($id);
+		$this->assertSame($obj, $newobj, "New object created rather than using old one");
+		unset($newobj);
+		unset($obj);
+		$newobj = MockActiveRecordA::createFromKey($id);
+		$this->assertEquals($id, $newobj->id, "CreateFromKey Returned Wrong Object");
+		$newobj->removeFromCache();
+		$this->assertFalse($memcache->get($cachekey), "Object not removed from memcache");
+
+		// Try a key with spaces as memcache doesn't like spaces
+		$space = new MockActiveRecordB(array('name' => "Ice Cream"));
+		$space->save();
+
+		// Make sure spaces aren't just being replaced with understores
+		$underscore = MockActiveRecordB::createFromKey("Ice_Cream");
+		$this->assertNull($underscore, "Returning a value for a key which hasn't been set");
+	}
+
+	public function testImplementsIterator() {
+		$obj = new MockActiveRecordA();
+		$obj->edit(self::$publicdata);
+		$ii = 0;
+		foreach ($obj as $key => $val) {
+			$ii++;
+			$this->assertEquals(self::$publicdata[$key], $val, "Key '$key' dosen't match");
+		}
+		$this->assertEquals(count(self::$publicdata), $ii, "Number of values doesn't match");
+	}
+
+	public function testImplementsCountable() {
+		$obj = new MockActiveRecordA();
+		$obj->edit(self::$publicdata);
+		$this->assertEquals(count(self::$publicdata), count($obj), "Number of values doesn't match");
+	}
+
+	public function testImplementsArrayAccess() {
+		$obj = new MockActiveRecordA();
+		foreach (self::$publicdata as $key => $val) {
+			$obj[$key] = $val;
+		}
+		foreach (self::$publicdata as $key => $val) {
+			$this->assertEquals($val, $obj[$key], "Key '$key' dosen't match");
+			$this->assertEquals($obj->$key, $obj[$key], "Array access for '$key' dosen't match getter value");
+		}
+	}
+
+	public function testMagicGettersAndSetters() {
+		$nonprivatedata = array_merge(self::$publicdata, self::$otherdata);
+		$obj = new MockActiveRecordA();
+		foreach ($nonprivatedata as $key => $val) {
+			$obj->$key = $val;
+		}
+		foreach ($nonprivatedata as $key => $val) {
+			$this->assertEquals($val, $obj->$key, "Getter '$key' dosen't match value given to setter");
+			if (isset(self::$publicdata[$key])) $this->assertEquals($obj[$key], $obj->$key, "Getter for '$key' dosen't match array access value");
+		}
+	}
+
+	public function testTryingToSetPrivateFields() {
+		$obj = new MockActiveRecordA();
+		foreach (self::$privatedata as $key => $val) {
+			$this->setExpectedException("InvalidCallException", 'Cannot set value of private key');
+			$obj->$key = $val;
+			$this->setExpectedException("InvalidCallException", 'Cannot set value of private key');
+			$obj[$key] = $val;
+		}
+		$this->setExpectedException("InvalidCallException", 'Cannot set value of private key');
+		$obj->edit(self::$privatedata);
+	}
+
+	public function testNewObjectCreation() {
+		$obj = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$obj->save();
+		$this->assertNotNull($obj->id, "No Id created");
+	}
+
+	public function testSearch() {
+		$obja = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objb = new MockActiveRecordA(self::$seconddata);
+		$obja->save();
+		$objb->save();
+		$results = MockActiveRecordA::search(array('language' => "Egyptian"));
+		$this->assertEquals(1, count($results), "Wrong number of results");
+		foreach ($results as $result) {
+			$this->assertSame($objb, $result, "Not the same object");
+		}
+	}
+	public function testFindThrowsExceptionOnTooManyResults() {
+		$obja = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objb = new MockActiveRecordA(self::$seconddata);
+		$obja->save();
+		$objb->save();
+		$this->setExpectedException("InvalidCallException", 'More than one result found');
+		$results = MockActiveRecordA::find(array('role' => "In charge"));
+	}
+	public function testUsingExistingPrimaryKeyThrowsException() {
+		$objba = new MockActiveRecordB(array('name' => "pizza"));
+		$objba->save();
+		$objbb = new MockActiveRecordB(array('name' => "pizza"));
+		$this->setExpectedException("InvalidCallException", 'Key already exists');
+		$objbb->save();
+	}
+
+	public function testOneToManyRelationshipsWithoutKeyThrowsException() {
+		$objaa = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objba = new MockActiveRecordB();
+		$this->setExpectedException("InvalidCallException", 'Key required to create link');
+		$objaa->link('most_fav_food', $objba);
+	}
+	public function testOneToManyRelationshipsOnUnsavedObjectThrowsException() {
+		$objaa = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objba = new MockActiveRecordB();
+		$this->setExpectedException("InvalidCallException", 'Can\'t link to an object which is not in the database');
+		$objba->name = 'pizza';
+		$objaa->link('most_fav_food', $objba);
+	}
+	public function testOneToManyRelationshipsWithCorrectKeysWorks() {
+		$objaa = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objab = new MockActiveRecordA(self::$seconddata);
+		$objba = new MockActiveRecordB();
+		$objba->name = 'pizza';
+		$objba->save();
+		$objaa->link('most_fav_food', $objba);
+		$objba->link('most_fav_of', $objab);
+		$objaa->save();
+		$objab->save();
+
+		$userids = $this->db->queryList("SELECT id FROM people WHERE most_fav_food_name = %s", $objba->name);
+		$this->assertContains($objaa->id, $userids, "Objaa not linked in database");
+		$this->assertContains($objab->id, $userids, "Objab not linked in database");
+
+		$users = $objba->getRelations('most_fav_of');
+		$this->assertEquals(count($userids), count($users), "Incorrect number of users returned from getRelations()");
+		$this->assertContains($objaa, $users, "Objaa not linked in class");
+		$this->assertContains($objab, $users, "Objba not linked in class");
+	}
+	public function testJunctions() {
+		$objaa = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objab = new MockActiveRecordA(self::$seconddata);
+		$objba = new MockActiveRecordB(array('name' => "pizza"));
+		$objbb = new MockActiveRecordB(array('name' => "Xmas dinner"));
+		$objbc = new MockActiveRecordB(array('name' => "ice cream"));
+		$objbd = new MockActiveRecordB(array('name' => " ฉันกินกระจกได้ แต่มันไม่ทำให้ฉันเจ็บ"));
+		$objba->save();
+		$objbb->save();
+		$objaa->link('fav_foods', $objba);
+		$objaa->link('fav_foods', $objbb);
+		$objab->link('fav_foods', $objba);
+		$objab->link('fav_foods', $objbb);
+		$objaa->save();
+		$objab->save();
+		$objbc->link('fav_of', $objaa);
+		$objbd->link('fav_of', $objaa);
+		$objbc->save();
+		$objbd->save();
+
+		$foodsa = $this->db->queryList("SELECT foodname FROM people_foods WHERE userid = %d", $objaa->id);
+		foreach (array($objba, $objbb, $objbc, $objbd) as $obj) {
+			$this->assertContains($obj->name, $foodsa, "Obj not linked in database");
+		}
+		$foodsb = $this->db->queryList("SELECT foodname FROM people_foods WHERE userid = %d", $objab->id);
+		foreach (array($objba, $objbb) as $obj) {
+			$this->assertContains($obj->name, $foodsb, "Obj not linked in database");
+		}
+		foreach (array($objbc, $objbd) as $obj) {
+			$this->assertNotContains($obj->name, $foodsb, "Obj linked in database");
+		}
+
+		$users = $objba->getRelations('fav_of');
+		$this->assertEquals(2, count($users), "Incorrect number of users returned from getRelations()");
+		$this->assertContains($objaa, $users, "Objaa not linked in class");
+		$this->assertContains($objab, $users, "Objba not linked in class");
+	}
+
+	public function testUnlinking() {
+		$objaa = new MockActiveRecordA(array_merge(self::$publicdata, self::$privatedata));
+		$objab = new MockActiveRecordA(self::$seconddata);
+		$objba = new MockActiveRecordB(array('name' => "pizza"));
+		$objbb = new MockActiveRecordB(array('name' => "Xmas dinner"));
+		$objbc = new MockActiveRecordB(array('name' => "ice cream"));
+		$objbd = new MockActiveRecordB(array('name' => " ฉันกินกระจกได้ แต่มันไม่ทำให้ฉันเจ็บ"));
+		$objaa->save();
+		$objab->save();
+		$objba->save();
+		$objbb->save();
+		$objbc->save();
+		$objbd->save();
+		$objaa->link('most_fav_food', $objba);
+		$objba->link('most_fav_of', $objab);
+		$objaa->link('fav_foods', $objba);
+		$objaa->link('fav_foods', $objbb);
+		$objab->link('fav_foods', $objba);
+		$objab->link('fav_foods', $objbb);
+		$objbc->link('fav_of', $objaa);
+		$objbd->link('fav_of', $objaa);
+		$objaa->save();
+		$objab->save();
+		$objba->save();
+		$objbb->save();
+		$objbc->save();
+		$objbd->save();
+		$objaa->unlink('most_fav_food', $objba);
+		$objaa->save();
+		foreach (array($objaa, $objab, $objba, $objbb, $objbc, $objbd) as $obj) {
+			$obj->unlinkAll('dunno');
+			$obj->save();
+			$this->assertEmpty($obj->getRelations, "Obj still has links");
+		}
+
+		$res1 = $this->db->query("SELECT * FROM people_foods");
+		$res2 = $this->db->query("SELECT * FROM people where most_fav_food_name IS NOT NULL");
+
+		$this->assertEquals(0, count($res1), "Still some many-to-many links in db");
+		$this->assertEquals(0, count($res2), "Still some one-to-many links in db");
+
+	}
+
+	public function testDeletingObject() {
+
+		$obj = new MockActiveRecordB(array('name' => "ice cream"));
+		$obj->save();
+		$res = $this->db->query("SELECT * FROM food");
+		$this->assertEquals(1, count($res), "Wrong number of items in database");
+		$this->assertEquals(1, count(MockActiveRecordB::getAll()), "Wrong number of objects");
+		$obj->delete();
+		$this->assertNull($obj->name, "Object still has primary key after deletion");
+		$res = $this->db->query("SELECT * FROM food");
+		$this->assertEquals(0, count($res), "Item not removed from database");
+		$this->assertEquals(0, count(MockActiveRecordB::getAll()), "Object not removed");
+	}
+
+	public function testCreateFromKeyNullReturnsNull() {
+		$this->assertNull(MockActiveRecordA::createFromKey(null));
+	}
+
+	public function tearDown() {
+		$this->db->query("SET FOREIGN_KEY_CHECKS = 0;");
+		$this->db->query("DROP TABLE people;");
+		$this->db->query("DROP TABLE food");
+		$this->db->query("DROP TABLE people_foods");
+		$this->db->query("SET FOREIGN_KEY_CHECKS = 1;");
+	}
+}

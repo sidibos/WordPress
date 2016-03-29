@@ -1,0 +1,102 @@
+<?php
+/*
+########################################################
+Stats page for Referrers
+
+Upgraded to core v3 on 20th April 2006 by RB.
+
+04/11/2004
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+require_once("statslib");
+if (!checkIfAuth("statistics", "", false, array("premium", "server"))) {
+	outputPremiumGuideAndExit(&$page);
+}
+
+// Create a new data table
+$tb = new datatable("referrals", "referral");
+
+// Define columns
+$tb->addColumn("referrer", "Referring page", "ASC");
+$tb->addColumn("hits", "Hits", "DESC", $tb->RIGHTALIGN);
+$tb->addColumn("hitspercent", "Percent", "DESC", $tb->RIGHTALIGN);
+
+// Define filters
+$tb->addFilter("startdate", "Start month (mm/yyyy)", "partialtext", "s", false, date('m/Y'));
+$tb->addFilter("enddate", "End month (mm/yyyy)", "partialtext", "e", false, date('m/Y'));
+$tb->addFilter("reffilter", "Match referrer", "partialtext", 'r', false, "");
+
+// Set default sort-by column
+$tb->setSort("hits");
+
+// Process the date filter
+$startdate = Common::convertHumanTime($tb->getFilterValue("startdate"));
+$enddate = Common::convertHumanTime($tb->getFilterValue("enddate"));
+checkDateFilters(&$startdate, &$enddate, &$page);
+
+$counts = getReferers(date("mY", $startdate), date("mY", $enddate));
+
+// Filter out any referrers matching the SITEHOSTS.
+if ($SITEHOSTS and is_array($SITEHOSTS)) {
+	$sitehostarray = array();
+	foreach ($SITEHOSTS as $sitehost) $sitehostarray[$sitehost] = $sitehost;
+	
+	foreach ($counts as $key=>$data) {
+		$referrerhost = $data["referrer"];
+		if (strpos($referrerhost, "http://") !== false) $referrerhost = substr($referrerhost, 7);
+		elseif (strpos($referrerhost, "https://") !== false) $referrerhost = substr($referrerhost, 8);
+		$referrerhost = explode("/", $referrerhost);
+		$referrerhost = $referrerhost[0];
+		if ($sitehostarray[$referrerhost]) unset($counts[$key]);
+	}
+}
+
+// Get a total number of hits
+$total = 0;
+foreach ($counts as $data) {
+	$total += $data["hits"];
+}
+if (!$total) $total = 1;
+
+// Filter the table if needed
+$reffilt = $tb->getFiltervalue("reffilter");
+if ($reffilt) {
+	foreach ($counts as $key=>$data) {
+		if (strpos(strtolower($data["referrer"]), strtolower($reffilt)) === false) unset($counts[$key]); 
+	}
+}
+
+// Grab a count of the numbers of pages left before pagination, and page count
+$numresults = count($counts);
+$numpages = ceil($numresults/$tb->rowsperpage);
+
+// Deal with sorting the data...
+sortArrayBasedTable(&$counts, &$tb);
+
+// Define page number, default to page 1
+$pno = (is_numeric($_GET["p"])) ? $_GET["p"] : 1;
+
+// Paginate the pages list (!)
+if (count($counts) > $tb->rpp) {
+	$counts = array_slice($counts, (($pno * $tb->rowsperpage) - $tb->rowsperpage), $tb->rowsperpage);
+}
+
+foreach ($counts as $data) {
+	$data["referrer"] = "<a href=\"".$data["referrer"]."\">".str_replace("/", "/&shy;<wbr />", $data["referrer"])."</a>";
+	$data["hitspercent"] = number_format(($data["hits"]/$total)*100, 1)."%";
+	$data["hits"] = number_format($data["hits"]);
+	$tb->addRow($data);
+}
+
+// Construct the page
+$page->addContent("content", $tb->outputTable());
+$page->addContent("context", $db->outputPagination($numresults, $numpages, $pno, "popular page"));
+$page->addContent("context", $tb->outputFilterform());
+$page->addContent("context", getStatsDateString($startdate, $enddate));
+$page->addContent("context", file_get_contents("/assanka/web/admin/v3/stats/html/referralsinfo"));
+
+$page->render();
+?>

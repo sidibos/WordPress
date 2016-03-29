@@ -1,0 +1,2 @@
+#!/bin/sh
+php -c /etc/php-debugging/php.ini "$@"

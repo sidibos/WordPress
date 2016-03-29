@@ -1,0 +1,20 @@
+#!/usr/local/bin/php
+<?php
+/**
+ * A daemon which never ends on its own
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+require_once $_SERVER['CORE_PATH'].'/helpers/daemon/v2/daemon';
+
+
+$daemon = new DaemonV2(array(
+	'maxinstances' => 5,
+	'startingdaemoninstances' => 3,
+	'replaceexisting' => false,
+));
+
+while (true) {
+	sleep(1);
+}

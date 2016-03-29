@@ -1,0 +1,159 @@
+<?php
+/**
+ * User management area of admin console; controls the addition of
+ * new users to the .htpasswd file and the cfg_adminusers table, to
+ * enable access to the admin system, as well as allowing editing of
+ * current users.
+ *
+ * Upgraded to admin v3 on 7th April 2006 by RB.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once("userslib");
+
+// Fetch list of possible permissions
+$perms = getAvailablePerms();
+
+// Set up stats levels array and load this user's support level
+$statslevels = array("no access"=>0, "standard"=>100, "sbe"=>200, "premium"=>300, "server"=>400);
+$statslongnames = array("no access"=>"no access", "standard"=>"access to standard statistics", "sbe"=>"access to small business edition statistics", "premium"=>"access to premium statistics", "server"=>"access to cross-server statistics");
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+$result = $db->query("SELECT permissions_statistics_role FROM cfg_adminusers WHERE htaccessuser='".$db->sqlenc($authuser)."'", true);
+if (!is_resource($result)) $result = $db->query("SELECT permissions_statistics FROM cfg_adminusers WHERE htaccessuser='".$db->sqlenc($authuser)."'", true);
+if (is_resource($result) && mysql_num_rows($result)) $authuserstats = $db->singleresult($result);
+else $authuserstats = "no access";
+
+// If we're editing an old record, load the information to edit, or error
+if (empty($_REQUEST['action']) or $_REQUEST["action"] != "new") {
+	$result = $db->query("SELECT *, htaccessuser AS username FROM cfg_adminusers WHERE htaccessuser='".$db->sqlenc($_REQUEST["user"])."'");
+	if (!$userdetails = $db->fetchrow($result)) trigger_error("htaccessuser not found (looking for ".$_REQUEST["user"].")", E_USER_ERROR);
+}
+
+// Set up an input form to request the required data
+$form = new inputform("supportedit", "POST", "edit");
+
+// Simple fields for all the information:
+$group1 = new simplefieldgroup(&$form);
+$group1->addText("username", "Username", "u", true, "/.{1,}$/", 50);
+if (!empty($_REQUEST['action']) and $_REQUEST["action"] == "new") {
+	$group1->addHidden("action", "new");
+	$group1->addText("password", "Password", "p", true, "/.{1,}$/", 50);
+} else {
+	$group1->addHidden("user", $_REQUEST["user"]);
+	$group1->addText("password", "Password", "p", false, "/.{1,}$/", 50);
+}
+$group1->addText("name", "Name", "n", true, "/.{1,}$/", 250);
+$group1->addText("email", "Email", "e", false, $form->RGX_EMAIL, 250);
+
+// Permission information:
+$group2 = new simplefieldgroup(&$form, "Section Permissions");
+foreach ($perms as $name=>$values) {
+	if ($name == "statistics") {
+		$allowablestats = array();
+		foreach ($values["values"] as $key=>$value) {
+			if ($statslevels[$authuserstats] >= $statslevels[$key]) {
+				$allowablestats[$key] = $statslongnames[$key];
+			}
+		}
+		$group2->addSelect($values["fieldname"], ucfirst(str_replace("_", " ", str_replace("-", " ", $name))), false, true, $allowablestats);
+	} else {
+		$group2->addSelect($values["fieldname"], ucfirst(str_replace("_", " ", str_replace("-", " ", $name))), false, true, $values["values"]);
+	}
+}
+
+// Define help text
+$form->addHelptext("username", "Type a username for the user. This can consist of any alphanumeric characters and spaces, and is case sensitive. A 3-character minimum is recommended.");
+if (!empty($_REQUEST['action']) and $_REQUEST["action"] == "new") $form->addHelptext("password", "Add a password for the new user. Passwords are more secure if they include numbers or punctuation, and are not based on dictionary words. A 6-character minimum is recommended.");
+else $form->addHelptext("password", "The user's existing password is not displayed, so if you leave this field blank it will stay as it is. Alternatively fill it in to change the password. Passwords are more secure if they include numbers or punctuation, and are not based on dictionary words. A 6-character minimum is recommended.");
+$form->addHelptext("name", "The name of the user should be entered in a consistent format, for example firstname surname, or surname comma firstname. The choice of format is less important than ensuring all users' names are entered in the same way.");
+$form->addHelptext("email", "The email address should be entered in the standard format - user@example.com.<br /><br />The email address is used by the system for notifications - for example, when an Outline administrator is sent a draft for review.");
+foreach($perms as $name=>$values) {
+	$form->addHelptext($values["fieldname"], "The options here show the available permissions you can apply to this user in the ".ucfirst($name)." section of the Administration console. In each section the user has a role, which defines their basic level of access to that section. If their role within a section is set to no access, the tab for that section will not appear when they log in.");
+}
+
+// Add action buttons
+$page->addAction("submit", "Save", false, "document.getElementById('frmsupportedit').submit()");
+if (empty($_REQUEST['action']) or $_REQUEST["action"] != "new") {
+	$page->addAction("delete", "Delete", false, "if(confirm('Do you really want to delete this user?  This action cannot be undone.')) window.location='delete?user=".$_REQUEST["user"]."'");
+}
+$page->addAction("cancel", "Cancel", "index");
+
+// Check for submitted information, and check any using the core validation
+if ($_POST) {
+	$group1->addData($_POST);
+	$group2->addData($_POST);
+	
+	$htcheckpassed = true;
+	if (((!empty($_REQUEST['action']) and $_REQUEST["action"] == "new") || ((empty($_REQUEST['action']) or $_REQUEST["action"] != "new") && ($_POST["username"] != $_REQUEST["user"]))) && htpasswdUserExists($_POST["username"])) {
+		$page->alert("The username you entered is already in use by another user.", "error");
+		$htcheckpassed = false;
+	}
+	
+	if ($group1->inputValid() && $group2->inputValid() && $htcheckpassed) {
+	
+		// If the input is considered valid, first check for any warnings
+		if (strlen($_POST["username"]) < 3) $page->alert("You have provided a very short username.  3 characters minimum is recommended", "warning");
+		if ($_POST["password"] && strlen($_POST["password"]) < 6) $page->alert("You have provided a very short password.  6 characters minimum is recommended", "warning");
+		if (strpos($_POST["name"], " ") === false) $page->alert("The name you entered for the user does not seem to be a complete name.  The preferred format is <em>firstname surname</em>", "warning");
+		
+		// Write the htpasswd
+		if ($_POST["password"] || ($_POST["username"] != $_POST["user"])) {
+			updateHtpasswd((isset($_POST["user"]))?$_POST["user"]:$_POST["username"], $_POST["username"], $_POST["password"]);
+		}
+
+		// Construct permissions part of query
+		$permsql = "";
+		foreach($perms as $name=>$values) {
+			$permsql .= ", `".$db->sqlenc($values["fieldname"])."`='".$db->sqlenc($_POST[$values["fieldname"]])."'";
+		}
+
+		// Write permisions to table; if the user already exists, update the row
+		if (empty($_REQUEST['action']) or $_REQUEST["action"] != "new") {
+			$query = "UPDATE cfg_adminusers SET htaccessuser='".$db->sqlenc($_POST["username"])."', name='".$db->sqlenc($_POST["name"])."', email='".$db->sqlenc($_POST["email"])."'".$permsql." WHERE htaccessuser='".$db->sqlenc($_POST["user"])."'";
+		
+		// Otherwise, create a new record
+		} else {
+			$query = "INSERT INTO cfg_adminusers SET htaccessuser='".$db->sqlenc($_POST["username"])."', name='".$db->sqlenc($_POST["name"])."', email='".$db->sqlenc($_POST["email"])."'".$permsql;
+		}
+		$db->query($query);
+		
+		// Confirm and return to the index view
+		$page->alert("User '".$_POST["name"]."' was ".((!empty($_REQUEST['action']) and $_REQUEST["action"] == "new")?"created":"modified")." successfully.", "done");
+		header("Location: index");
+		exit;
+		
+	// If the input is invalid, redisplay the form with core highlighting
+	} else {
+		$group1->addToform(true);
+		$group2->addToform(true);
+		
+		// Add an error message
+		$page->alert("You did not complete the form correctly.  Please review the fields marked below, and ensure you have read the help text available in the panel on the right.", "error");
+	}
+} else {
+	
+	// Add a default informational alert for new users
+	if (!empty($_REQUEST['action']) and $_REQUEST["action"] == "new") {
+		$page->alert("You are creating a new user.  Please provide the required information, and then click the Save button on the right.");
+	
+	// Add data if we're editing
+	} else {
+		$group1->addData($userdetails);
+		$group2->addData($userdetails);
+	}
+	
+	// Add the fieldgroups to the form
+	$group1->addToform(false);
+	$group2->addToform(false);
+}
+
+// Output the form and help panel to the page
+$page->addContent("content", $form->outputForm());
+$page->addContent("context", $form->outputContextHelp());
+$page->addContent("content", "<script type='text/javascript' src='suggestpasswordjs'></script>");
+
+if (!empty($_REQUEST['action']) and $_REQUEST["action"] == "new") $page->title = "Create a new admin user";
+else $page->title = "Edit an admin user";
+$page->render();
+?>

@@ -1,0 +1,313 @@
+<?php
+/**
+ * Gatepass API
+ *
+ * Allows data to be read and written to the Assanka Gatepass single sign on service.  Normally, to access a user's Gatepass account for reading or writing data, use the GatepassUser class, which wrap this one.
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once $_SERVER['CORE_PATH']."/helpers/gatepass/oauthclient";
+require_once $_SERVER['CORE_PATH']."/helpers/http/HTTPRequest";
+
+class GatePassAPI {
+
+	private $gphost = "gatepass.assanka.com";
+	private $usessl = true;
+	private $privkey = null;
+	private $reqparamdefaults = array("Accept"=>"application/json");
+	private $consumerkey, $consumersecret;
+	private $oa;
+
+	/**
+	 * Create a Gatepass API connection
+	 *
+	 * @param string $consumerkey    The consumer key for the application making the connection, registered to the application in Gatepass
+	 * @param string $consumersecret The application's secret that accompanies the consumer key
+	 * @return GatepassAPI
+	 */
+	public function __construct($consumerkey, $consumersecret) {
+		$this->consumerkey = $consumerkey;
+		$this->consumersecret = $consumersecret;
+		$this->reqparamdefaults['Authorization'] = "Basic ".base64_encode($this->consumerkey.":".$this->consumersecret);
+	}
+
+	/**
+	 * Invoke the use of SSL to encrypt the connection
+	 *
+	 * By default the connection to Gatepass is not encrypted.  Use this option to turn it on.  Note that the Gatepass live environment at gatepass.assanka.com does not support non-secure access, so SSL must be enabled to use it.  However you may choose to use standard HTTP if your gatepass host is a staging or dev version.
+	 *
+	 * @param boolean $newval Set to true to turn SSL on, false to turn it off
+	 * @return void
+	 */
+	public function useSSL($newval=true) {
+		$this->usessl = ($newval == true);
+	}
+
+	/**
+	 * Set the Gatepass API host
+	 *
+	 * By default the live Gatepass environment at gatepass.assanka.com will be used.  If you wish to communicate with another instance of gatepass, eg. in a dev or staging environment, use this to set the appropriate hostname.
+	 *
+	 * @param string $host Hostname of Gatepass API service
+	 * @return void
+	 */
+	public function setHost($host) {
+		if (stripos($host, "http://") === 0) {
+			$this->useSSL(false);
+			$host = trim(substr($host, 7), "/");
+		} elseif (stripos($host, "https://") === 0) {
+			$this->useSSL(true);
+			$host = trim(substr($host, 8), "/");
+		}
+		$this->gphost = $host;
+	}
+
+	/**
+	 * Set a private key for decoding encrypted password data
+	 *
+	 * Gatepass can store sensitive data in password fields that can only be decrypted by the Gatepass user themselves or by authorised applications using an openSSL pubicprivate key pair.  If your application has a public key set up in gatepass, you can set a private key here to automatically decode any encrypted data that is retrieved from the API.
+	 *
+	 * If you have not set a private key and your application attempts to read the value of an encrypted field, a null value will be returned in that field.
+	 *
+	 * @param string $key An OpenSSL private key string
+	 * @return void
+	 */
+	public function setPrivateKey($key) {
+		$this->privkey = $key;
+	}
+
+	/**
+	 * Set the user agent to send in Gatepass API requests
+	 *
+	 * Well behaving API consumers should send a user agent header to Gatepass with each request that describes the organisation, product and version that is making the request.
+	 *
+	 * @param string $organisation Name of organisation (eg 'Assanka')
+	 * @param string $productname  Name of product
+	 * @param string $version      Version number of product (major version only)
+	 * @return void
+	 */
+	public function setUserAgent($organisation, $productname, $version) {
+		if (!preg_match("/[a-zA-Z0-9\.]+/", $organisation)) throw new Exception("Invalid organisation name");
+		elseif (!preg_match("/[a-zA-Z0-9\.]+/", $productname)) throw new Exception("Invalid prduct name");
+		elseif (!preg_match("/[0-9]+(\.[0-9]+)?/", $version)) throw new Exception("Invalid version number");
+		$this->reqparamdefaults['User-agent'] = $organisation."/".$productname."/".$version;
+	}
+
+	/**
+	 * Authenticate on behalf of a user, using OAuth
+	 *
+	 * If you wish to authenticate your request on behalf of a particular user, that user may delegate authority to access their account to your application using OAuth.  After you have done a standard OAuth token exchange you will have obtained an access token for the user and an accompanying token secret (see helpers/authentication/v2/authentication/authgatepass for a class wrapper that will do this for you).  Supply the access token and secret here to authenticate as the specified user.
+	 *
+	 * If you do not use OAuth authentication, your request will be authenticated as the application itself, rather than the application acting on behalf of a user, and will use HTTP basic auth of your consumer key and secret to achieve this.
+	 *
+	 * @param string $accesstoken OAuth access token saved from a prior OAuth token exchange
+	 * @param string $tokensecret Oauth access token secret accompanying the access token
+	 * @return void
+	 */
+	public function useOAuth($accesstoken, $tokensecret) {
+		$this->oa = new OAuthClient($this->getApiUrl(), '/', '/', '/', $this->consumerkey, $this->consumersecret);
+		$this->oa->setToken("access", $accesstoken, $tokensecret);
+	}
+
+	/**
+	 * Fetch data from a user's Gatepass profile
+	 *
+	 * To be granted access to data on a user's profile, an application must have been previously authorised by the user in an interactive OAuth token exchange.  Such authorisation can be withdrawn by the user at any time, so your application should be able to cope with this.
+	 *
+	 * @param integer $userid    Gatepass user ID for the subject whose data you wish to read.  Required for non-OAuth-authenticated requests.  If request is OAuth authenticated (see useOAuth), then this parameter can be omitted or set to null, and the authenticated user's profile will be used automatically.
+	 * @param string  $namespace Key for profile namespace containing data to retrieve (may be omitted to retrieve entire available profile)
+	 * @param string  $key       Key for specific data field whose value should be retrieved (May be omitted to retrieve a whole namespace, or an entire available profile)
+	 * @return mixed Either an array (if selecting an entire profile or a namespace), or a single scalar value (if selecting a specific field by supplying both a namespace and key), or false if the value was not found
+	 */
+	public function getData($userid, $namespace=false, $key=false) {
+		if (!is_numeric($userid)) $userid = 'default';
+		$path = "/".$userid;
+		if ($namespace) $path .= "/".$namespace;
+		if ($key) $path .= "/".$key;
+		$resp = $this->makeRequest("GET", $path);
+		if (is_object($resp) and $resp->getResponseStatusCode() == 200) return $this->decryptData($resp->getData());
+		return false;
+	}
+
+	/**
+	 * Update a user's gatepass profile with new data
+	 *
+	 * @param integer $userid        User ID of user whose profile is to be updated.  Required for non-OAuth-authenticated requests.  If request is OAuth authenticated (see useOAuth), then this parameter can be omitted or set to null, and the authenticated user's profile will be used automatically.
+	 * @param string  $namespace     Gatepass profile namespace containing the key whose value is to be updated
+	 * @param string  $key           Field key of field to update
+	 * @param string  $newvalue      New value to save
+	 * @param string  $previousvalue The value your application believes to be the current value to be overwritten.  If supplied and the value stored in Gatepass does not match, it will not be overwritten and an error will be thrown.
+	 * @return void
+	 */
+	public function setData($userid, $namespace, $key, $newvalue, $previousvalue = false) {
+		if (!is_numeric($userid)) $userid = 'default';
+		$params = ($previousvalue) ? array("If-Match" => $this->conflictHash($previousvalue)) : array();
+		$resp = $this->makeRequest("PUT", "/".$userid."/".$namespace."/".$key, $params, $newvalue);
+		if (is_object($resp) and $resp->getResponseStatusCode() == 201) return true;
+		if (is_object($resp) and $resp->getResponseStatusCode() == 404) throw new AssankaException('Dataset not found', 0, null, $resp);
+		if (is_object($resp) and $resp->getResponseStatusCode() == 403) throw new AssankaException('Edit prohibited', 0, null, $resp);
+
+		// TODO:AB:20100905: Throw an explicit error in case of version conflict
+
+		throw new AssankaException('Unexpected response from Gatepass API', 0, null, $resp);
+	}
+
+	/**
+	 * Delete an item of data frm a user's Gatepass profile
+	 *
+	 * @param integer $userid        User ID of user whose profile is to be updated.  Required for non-OAuth-authenticated requests.  If request is OAuth authenticated (see useOAuth), then this parameter can be omitted or set to null, and the authenticated user's profile will be used automatically.
+	 * @param string  $namespace     Gatepass profile namespace containing the key whose value is to be deleted
+	 * @param string  $datakey       Field key of field to delete
+	 * @param string  $previousvalue The value your application believes to be the current value to be deleted.  If supplied and the value stored in Gatepass does not match, it will not be deleted and an error will be thrown.
+	 * @return void
+	 */
+	public function deleteData($userid, $namespace, $datakey, $previousvalue = false) {
+		$params = ($previousvalue) ? array("If-Match" => $this->conflictHash($previousvalue)) : array();
+		$resp = $this->makeRequest("DELETE", "/".$userid."/".$namespace."/".$datakey, $params);
+		if (is_object($resp) and $resp->getResponseStatusCode() == 204) return true;
+		if (is_object($resp) and $resp->getResponseStatusCode() == 404) throw new AssankaException('Dataset not found', 0, null, $resp);
+		if (is_object($resp) and $resp->getResponseStatusCode() == 403) throw new AssankaException('Deletion prohibited', 0, null, $resp);
+		throw new AssankaException('Unexpected response from Gatepass API', 0, null, $resp);
+	}
+
+	/**
+	 * Return a list of users who have authorised the application
+	 *
+	 * // TODO:AB:20100905: Check accuracy of parameter ad return value documentation
+	 *
+	 * @param integer $moddate Optional date (unix timestamp), if supplied only users that have been modified since this date will be returned.
+	 * @return array List of Gatepass user IDs
+	 */
+	public function getAllUsers($moddate=false) {
+		$resp = $this->makeRequest("GET", "/list?moddate=".$moddate);
+		if (is_object($resp) and $resp->getResponseStatusCode() == 200) return $resp->getData();
+		throw new AssankaException('Unexpected response from Gatepass API', 0, null, $resp);
+	}
+
+	/**
+	 * Set a date for conflict detection
+	 *
+	 * If set, causes a conflict detection header to be sent in  all setData or deleteData calls, ensuring that if data has been written by other applications after the date it was last read by your application, your application will be unable to overwrite it.
+	 *
+	 * @param integer $conflictdate Date as a unix timestamp
+	 * @return void
+	 */
+	public function setConflictDate($conflictdate) {
+		$this->reqparamdefaults["If-Unmodified-Since"] = $conflictdate;
+	}
+
+	/**
+	 * Cancel date based conflict detection
+	 *
+	 * Removes any date set using setConflictDate
+	 *
+	 * @return void
+	 */
+	public function clearConflictDate() {
+		unset($this->reqparamdefaults["If-Unmodified-Since"]);
+	}
+
+	/**
+	 * Calculate a hash for conflict detection based on previous value of field
+	 *
+	 * @param string $previousvalue The string to hash
+	 * @return string A formatted CRC32 checksum of the supplied text
+	 */
+	private function conflictHash($previousvalue) {
+		return sprintf("%u", crc32($previousvalue));
+	}
+
+	/**
+	 * Return data with password fields decrypted using the private key set using setPrivateKey
+	 *
+	 * If a private key has been set, any password fields in the $data array will be decrypted and the cleartext value will replace the encrypted one.  If the private key is unable to decrypt the data, or no private key has been set, the value of the field in the array will be set to null.  Any array elements that do not contain password fields will be included in the return value unaffected.
+	 *
+	 * @param array $data A heirarchical array of data returned from Gatepass
+	 * @return array The $data input array with password values replaced by their decrypted equivilents
+	 */
+	private function decryptData($data) {
+		if (!is_array($data)) {
+			if (substr($data, 0, 9) == 'PASSWORD:') {
+				if (!empty($this->privkey)) {
+					$privkeyresource = openssl_pkey_get_private($this->privkey);
+					openssl_private_decrypt(base64_decode(substr($data, 9)), $decrypted, $privkeyresource);
+					$data = $decrypted;
+				} else {
+					$data = null;
+				}
+			}
+		} else {
+			foreach ($data as $k=>$v) $data[$k] = $this->decryptData($v);
+		}
+		return $data;
+	}
+
+	/**
+	 * Set the format that the class should use to exchange data with Gatepass
+	 *
+	 * This is set to JSON by default, and normally there is no reason to change it.
+	 *
+	 * @param string $outputformat Choose from 'php', 'json' or 'plaintext'.  The plaintext output cannot be parsed automatically
+	 * @return void
+	 */
+	public function setOutputFormat($outputformat) {
+		switch ($outputformat) {
+			case "php":
+				$accept = "application/php";
+				break;
+			case "json":
+				$accept = "application/json";
+				break;
+			case "plaintext":
+				$accept = "text/plain";
+				break;
+			default:
+				throw new Exception("Invalid output format");
+		}
+		$this->reqparamdefaults["Accept"] = $accept;
+	}
+
+	private function getApiUrl() {
+		$url = ($this->usessl) ? "https://" : "http://";
+		return $url.$this->gphost;
+	}
+
+	/**
+	 * Perform an API request
+	 *
+	 * @param string $method    HTTP method to use ('GET' or 'POST')
+	 * @param string $path      URI path to request
+	 * @param array  $headers   Array of HTTP headers to include
+	 * @param array  $reqparams Array of key/value pairs to send as request data, either as querystring vars in the case of a GET request or url-encoded form data in the case of a POST request.
+	 * @return void
+	 */
+	private function makeRequest($method, $path, $headers=array(), $reqparams=false) {
+
+		$path = "/api/users".$path;
+
+		// If using OAuth, add the OAuth authorization header, overriding the default Basic auth header
+		if ($this->oa) {
+			$headers['Authorization'] = $this->oa->getAuthorizationHeader($method, $this->getApiUrl().$path, $reqparams);
+		}
+
+		$http = new HTTPRequest($this->getApiUrl().$path);
+		$http->setMethod($method);
+		$http->setHeaders($this->reqparamdefaults);
+		$http->setHeaders($headers);
+
+		if (is_array($reqparams)) {
+			$http->set($reqparams);
+		} elseif ($reqparams) {
+			$http->setRequestBody((string)$reqparams);
+		}
+
+		try {
+			$resp = $http->send();
+		} catch (Exception $e) {
+			$resp = false;
+		}
+		return $resp;
+	}
+}

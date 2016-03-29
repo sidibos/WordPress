@@ -1,0 +1,20 @@
+<?php
+/**
+ * A class which extends OrmSingleton for testing
+ *
+ * $Revision$
+ * $Date$
+ * $Author$
+ *
+ * @codingstandard Assanka
+ * @author Luke Blaney <luke@assanka.net>
+ * @copyright Assanka Limited [All rights reserved]
+ */
+
+require_once $_SERVER['CORE_PATH']."/helpers/orm/v2/OrmSingleton";
+
+class MockSingleton extends OrmSingleton {
+	public function getOutput() {
+		return "Turtle Soup";
+	}
+}

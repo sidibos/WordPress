@@ -1,0 +1,175 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at http://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
+        "This file is @generated automatically"
+    ],
+    "hash": "f4b198e3d2f39015fa73f0b08fcba932",
+    "packages": [
+        {
+            "name": "ftlabs/exception",
+            "version": "v1.2.1",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/labsmisc/exception.git",
+                "reference": "e8895c6bdf3722bf2fb3f5f307b0b7f707810906"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "FTLabs": "src/"
+                }
+            },
+            "description": "A namespaced Exception with context support",
+            "time": "2014-04-25 15:18:57"
+        },
+        {
+            "name": "ftlabs/helpers",
+            "version": "1.8.0",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/labsmisc/ftlabs-helpers.git",
+                "reference": "a085e0a425982aa34e8d39a5f803287553607e7c"
+            },
+            "require": {
+                "ftlabs/exception": "1.*",
+                "ftlabs/http": "2.*",
+                "ftlabs/memcache": "1.*",
+                "ftlabs/mysql": "5.*"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "FTLabs\\": "src/"
+                }
+            },
+            "description": "Composer-compatible FT Labs core helpers",
+            "time": "2015-01-16 15:59:25"
+        },
+        {
+            "name": "ftlabs/http",
+            "version": "v2.3.0",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/hh/http.git",
+                "reference": "327e1adfd70a2c2b684706a03687d35336c8e9e6"
+            },
+            "require": {
+                "ftlabs/exception": "~1.1"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "FTLabs": "src/"
+                }
+            },
+            "description": "FT Labs helper for sending HTTP requests and receiving responses",
+            "time": "2014-10-31 20:43:25"
+        },
+        {
+            "name": "ftlabs/logger",
+            "version": "1.65.1",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/log/logger.git",
+                "reference": "c882bd2d473d3e474b81bb9cda2d0f3bf2e47b94"
+            },
+            "require": {
+                "ftlabs/exception": "~1.1",
+                "psr/log": "~1.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "Testing": "test/",
+                    "FTLabs": "src/"
+                }
+            },
+            "description": "PHP Logging interface that conforms to PSR-3 standard interface",
+            "time": "2014-08-08 13:54:22"
+        },
+        {
+            "name": "ftlabs/memcache",
+            "version": "1.0.0",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/labsmisc/memcache.git",
+                "reference": "58914269ea82c75a9ada4eb703fac5ea27cdb214"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "FTLabs\\": "src/"
+                }
+            },
+            "description": "Memcached client",
+            "time": "2014-06-10 16:39:50"
+        },
+        {
+            "name": "ftlabs/mysql",
+            "version": "5.3.1",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/labsmisc/mysql.git",
+                "reference": "9ed8c7bfdba887cbd7abc6bf96f1878d3349c60c"
+            },
+            "require": {
+                "ftlabs/exception": "~1.2.1"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "FTLabs": "src/"
+                }
+            },
+            "description": "FT Labs wrapper for using MySQL in PHP",
+            "time": "2014-10-02 15:48:09"
+        },
+        {
+            "name": "psr/log",
+            "version": "1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/php-fig/log.git",
+                "reference": "fe0936ee26643249e916849d48e3a51d5f5e278b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/php-fig/log/zipball/fe0936ee26643249e916849d48e3a51d5f5e278b",
+                "reference": "fe0936ee26643249e916849d48e3a51d5f5e278b",
+                "shasum": ""
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "Psr\\Log\\": ""
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "PHP-FIG",
+                    "homepage": "http://www.php-fig.org/"
+                }
+            ],
+            "description": "Common interface for logging libraries",
+            "keywords": [
+                "log",
+                "psr",
+                "psr-3"
+            ],
+            "time": "2012-12-21 11:40:51"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": [],
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": [],
+    "platform-dev": []
+}

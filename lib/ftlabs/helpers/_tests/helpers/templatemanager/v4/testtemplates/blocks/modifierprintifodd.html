@@ -1,0 +1,15 @@
+This is some sample content to check that the "printifodd" modifier is working correctly.
+<!--@BLOCK:checkifodd|printifodd:braid-->
+This block is output because a variable is odd.
+<!--@ENDBLOCK:checkifodd-->
+
+<!--@BLOCK:checkifodd|ifodd:braid-->
+This block is output because a variable is odd, using a shorter form of the template syntax.
+<!--@ENDBLOCK:checkifodd-->
+
+<!--@BLOCK:nestouter-->
+	<!--@BLOCK:checkifodd|printifodd:braid-->
+	This block is output because a variable is odd, within another block.
+	<!--@ENDBLOCK:checkifodd-->
+<!--@ENDBLOCK:nestouter-->
+Ta-da!

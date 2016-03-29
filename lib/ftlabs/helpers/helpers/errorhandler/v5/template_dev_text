@@ -1,0 +1,10 @@
+ERROR: <!--@errstr-->
+occurred on line <!--@errline--> of <!--@errfile-->
+
+Code:
+
+<!--@line-->
+
+Backtrace:
+
+<!--@textdebug-->

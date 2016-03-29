@@ -1,0 +1,14 @@
+{
+	"appid": "assanka",
+	"pathoverride": "/assanka",
+		"config": [
+		{
+			"name": "all",
+			"nodes": [ "processing", "web" ],
+			"config": {
+				"remote.shell": {
+				}
+			}
+		}
+	]
+}

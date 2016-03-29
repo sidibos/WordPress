@@ -1,0 +1,121 @@
+<?php
+/**
+ * Test for AssankaLoggerV1 - logging to file
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+
+
+class fileLoggerTest extends PHPUnit_Framework_TestCase {
+	const LOG_PATH = '/var/log/apps/testlogger.log';
+	protected $logger;
+
+	protected function setUp() {
+		$this->logger = new AssankaLoggerV1("testlogger");
+		$this->logger->setLogMethod("file");
+		unlink(self::LOG_PATH);
+	}
+	protected function tearDown() {
+		chmod(self::LOG_PATH, 644);
+		unlink(self::LOG_PATH);
+	}
+	public function testCanLogStrings() {
+		$input1 = " 𐌼𐌰𐌲 𐌲𐌻𐌴𐍃 𐌹̈𐍄𐌰𐌽, 𐌽𐌹 𐌼𐌹𐍃 𐍅𐌿 𐌽𐌳𐌰𐌽 𐌱𐍂𐌹𐌲𐌲𐌹𐌸.";
+		$input2 = "aɪ kæn iːt glɑːs ænd ɪt dɐz nɒt hɜːt miː";
+		$this->logger->write($input1);
+		$output1 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input1)."\n$/", $output1, "Log contents don't match input");
+
+		$this->logger->write($input2);
+		$output2 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input1)."\n[\\d- :\.T\Z]+ ".preg_quote($input2)."\n$/", $output2, "Log contents don't match input");
+	}
+	public function testCanCopeWithDeletedLog() {
+		$input1 = "Ég get etið gler án þess að meiða mig.";
+		$input2 = "Minä voin syvvä st'oklua dai minule ei ole kibie. ";
+		$this->logger->write($input1);
+		$output1 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input1, '/')."\n$/", $output1, "Initial log contents don't match input");
+
+		unlink(self::LOG_PATH);
+
+		$this->logger->write($input2);
+		$output2 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input2, '/')."\n$/", $output2, "Post delete log contents don't match input");
+
+	}
+	public function testCanCopeWithMovedLog() {
+		$input1 = "Unë mund të ha qelq dhe nuk më gjen gjë.";
+		$input2 = "Կրնամ ապակի ուտել և ինծի անհանգիստ չըներ։";
+		$this->logger->write($input1);
+		$output1 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input1)."\n$/", $output1, "Initial log contents don't match input");
+
+		rename(self::LOG_PATH, '/var/log/apps/oldtestlogger.log');
+
+		$this->logger->write($input2);
+		$output2 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input2, '/')."\n$/", $output2, "Post move log contents don't match input");
+
+	}
+	public function testMovingLogFollowedByReintialiseWorks () {
+		$input1 = "Мога да ям стъкло, то не ми вреди.";
+		$input2 = " मी काच खाऊ शकतो, मला ते दुखत नाही.";
+		$this->logger->write($input1);
+		$output1 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input1)."\n$/", $output1, "Initial log contents don't match input");
+
+		rename(self::LOG_PATH, '/var/log/apps/oldtestlogger.log');
+
+		$this->logger->reinitialise();
+
+		$this->logger->write($input2);
+		$output2 = file_get_contents(self::LOG_PATH);
+
+		// Ignore exact datetime as that may have changed between writing log and reading from it
+		$this->assertRegExp('/^[\d- :\.T\Z]+ '.preg_quote($input2)."\n$/", $output2, "Post move log contents don't match input");
+
+	}
+	public function testDateFormatIsIso8601() {
+		$this->logger->write('foo');
+		$output1 = file_get_contents(self::LOG_PATH);
+		$this->assertRegExp('/^\d{4}-\d\d-\d\dT\d\d\:\d\d:\d\d\.\d{1,6}Z /', $output1, "Date is not in ISO8601 format");
+	}
+	public function testTimestampIsUsedForLog() {
+		$this->logger->write('foo', 1346768583); // 1346768583 is the UTC timestamp for "Tuesday 4th September 2012, 14:23:03"
+		$output1 = file_get_contents(self::LOG_PATH);
+		$this->assertRegExp('/^\d{4}-\d\d-\d\dT\d\d\:\d\d:\d\d\.\d{1,6}Z /', $output1, "Date is not in ISO8601 format");
+
+		// Datetime string should include microseconds, to give correct chronology in Splunk, for example
+		$this->assertRegExp('/^2012-09-04T14:23:03.000000Z /', $output1, "Logged date did not use supplied timestamp");
+	}
+	public function testErrorWhenOpeningFileDoesntCauseHardError() {
+		touch(self::LOG_PATH);
+		chmod(self::LOG_PATH, 000);
+
+		// The error here is reported to the helpdesk via ErrorHandlerV5::reportException (which phpunit can't detect)
+		$this->logger->setLogMethod("file");
+	}
+	public function testErrorWhenWritingDoesntCauseHardError() {
+		touch(self::LOG_PATH);
+		chmod(self::LOG_PATH, 000);
+
+		// The error here is reported to the helpdesk via trigger_error (which phpunit can detect).
+		$this->logger->write('foo');
+	}
+}

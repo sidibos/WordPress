@@ -1,0 +1,15 @@
+This is some sample content to check that the "printifnotset" modifier is working correctly.
+<!--@BLOCK:checkifnotset|printifnotset:braid-->
+This block is output because a variable is not set.
+<!--@ENDBLOCK:checkifnotset-->
+
+<!--@BLOCK:checkifnotset|ifnotset:braid-->
+This block is output because a variable is not set, using a shorter form of the template syntax.
+<!--@ENDBLOCK:checkifnotset-->
+
+<!--@BLOCK:nestouter-->
+	<!--@BLOCK:checkifnotset|printifnotset:braid-->
+	This block is output because a variable is not set, within another block.
+	<!--@ENDBLOCK:checkifnotset-->
+<!--@ENDBLOCK:nestouter-->
+Ta-da!

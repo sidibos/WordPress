@@ -1,0 +1,99 @@
+<?php
+function showLabelsInsteadOfValues($num) {
+	global $xdata, $osgroups;
+	$ret = current($xdata);
+	next($xdata);
+	return $osgroups[$ret]["name"];
+}
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+include ($_SERVER["CORE_PATH"]."/web/jpgraph/1.17beta2/jpgraph.php");
+include ($_SERVER["CORE_PATH"]."/web/jpgraph/1.17beta2/jpgraph_bar.php");
+include ($_SERVER["CORE_PATH"]."/web/jpgraph/1.17beta2/jpgraph_iconplot.php");
+if (substr($_SERVER["PATH_INFO"], 0, 5) == "/web/") include($_SERVER["CORE_PATH"]."/".substr($_SERVER["PATH_INFO"], 1, strrpos($_SERVER["PATH_INFO"], "/")-1)."/../statslib");
+else include ("../statslib");
+
+$osgroups = array(
+	"windows" => array(
+		"name" => "Microsoft\nWindows",
+		"editions" => array("winnt", "win95", "win98", "winme", "win2000", "win2003", "winxp", "winlong"),
+	),
+	"macos" => array(
+		"name" => "Apple\n Mac OS",
+		"editions" => array("macintosh", "macosx"),
+	),
+	"linux" => array(
+		"name" => "Linux",
+		"editions" => array("linux"),
+	),
+	"Unknown" => array(
+		"name" => "Unknown",
+		"editions" => array("Unknown"),
+	),
+);
+
+$counts = getOS(date("mY", $_GET["start"]), date("mY", $_GET["end"]));
+
+$data = array("windows"=>0, "macos"=>0, "linux"=>0, "Unknown"=>0);
+if (sizeof($counts)) {
+	foreach($counts as $edition=>$hits) {
+		foreach($osgroups as $tag=>$os) {
+			if (in_array($edition, $os["editions"])) {
+				$data[$tag] += $hits;
+				break;
+			}
+		}
+	}
+} else {
+	$data["Unknown"] = 0;
+}
+
+arsort($data);
+$ydata = array_values($data);
+$xdata = array_keys($data);
+
+// Create the graph.
+$graph = new Graph(650,350,"auto");	
+$graph->SetScale("textlin");
+$graph->title->Set("Hits grouped by operating system");
+
+// Create the linear plot
+$plot=new BarPlot($ydata);
+$plot->SetFillGradient("#B00003","#F8A6A6",GRAD_WIDE_MIDVER);
+$plot->SetWidth(0.65);
+$plot->value->Show();
+$plot->value->SetFont(FF_ARIAL, FS_NORMAL,8);
+$plot->value->SetColor("black");
+$plot->value->SetAlign('left','center');
+$plot->value->SetFormatCallback('showLabelsInsteadOfValues');
+
+// Create the logo plots
+$i=0;
+foreach(array_keys($data) as $tag) {
+	if (file_exists($_SERVER["CORE_PATH"].'/web/imgs/os32/'.$tag.'.png')) {
+		$icon = new IconPlot($_SERVER["CORE_PATH"].'/web/imgs/os32/'.$tag.'.png',0,(69*$i)+53,1,100);
+		$graph->Add($icon);
+	}
+	$i++;
+}
+
+// Add the plots to the graph
+$graph->Add($plot);
+
+$graph->xaxis->Hide();
+$graph->Set90AndMargin(40,3,35,40);
+$graph->title->SetFont(FF_ARIAL, FS_NORMAL, 12);
+$graph->SetFrame(true, "#F0F0F0");
+$graph->SetMarginColor("#F0F0F0");
+$graph->yaxis->scale->SetGrace(10,0);
+$graph->yaxis->SetPos('max');
+$graph->yaxis->SetFont(FF_ARIAL, FS_NORMAL, 8);
+$graph->xaxis->SetFont(FF_ARIAL, FS_NORMAL, 8);
+$graph->yaxis->SetLabelAlign('center','top');
+$graph->yaxis->SetLabelSide(SIDE_RIGHT);
+$graph->yaxis->SetTickSide(SIDE_LEFT);
+
+// Display the graph
+reset($xdata);
+$graph->Stroke();
+?>

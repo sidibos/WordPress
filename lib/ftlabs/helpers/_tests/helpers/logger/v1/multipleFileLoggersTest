@@ -1,0 +1,31 @@
+<?php
+/**
+ * Test for AssankaLoggerV1 - opening lots of file loggers
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+
+class multipleFileLoggersTest extends PHPUnit_Framework_TestCase {
+	const LOG_BASE_PATH = '/var/log/apps/';
+	protected $loggerpaths = array();
+	protected function setUp() {
+	}
+	protected function tearDown() {
+		foreach ($this->loggerpaths as $path) {
+			chmod($path, 644);
+			unlink($path);
+		}
+	}
+	public function testLotsOfFileLoggers() {
+		$this->markTestIncomplete("This test is awaiting a solution to redmine #13529");
+		$numloggers = 2000;
+		for ($ii = 0; $ii < $numloggers; $ii++) {
+			$loggername = "testlogger".uniqid();
+			$this->loggerpaths[] = self::LOG_BASE_PATH.$loggername.".log";
+
+			$logger = new AssankaLoggerV1($loggername);
+			$logger->setLogMethod("file");
+		}
+	}
+}

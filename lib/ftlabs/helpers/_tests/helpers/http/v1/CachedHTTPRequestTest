@@ -1,0 +1,43 @@
+<?php
+/**
+ * Tests the Cached HTTP Request class by using a mock HTTP Request class for it to extend
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Use a mock HTTP Request class so that CachedHTTPRequest ends up extending that instead of the regular one
+require_once(__DIR__ . '/MockHTTPRequest');
+require_once($_SERVER['CORE_PATH'] . '/helpers/http/v1/CachedHTTPRequest');
+
+
+class CachedHTTPRequestTest extends PHPUnit_Framework_TestCase {
+
+	/**
+	 * testConstructorCallsParentConstructor
+	 *
+	 * @covers CachedHTTPRequestV1::__construct
+	 * @return void
+	 */
+	public function testConstructorCallsParentConstructor() {
+		$url = "http://www.ft.com/";
+		$cachedrequest = new CachedHTTPRequestV1($url);
+		$this->assertEquals($url, $cachedrequest->url, "Parent constructor not called.");
+	}
+
+	/**
+	 * testCacheNone
+	 *
+	 * @covers CachedHTTPRequestV1::send
+	 * @covers CachedHTTPRequestV1::setCacheMode
+	 * @return void
+	 */
+	public function testCacheNone() {
+		$url = "http://www.ft.com/";
+		$cachedrequest = new CachedHTTPRequestV1($url);
+		$cachedrequest->setCacheMode(CachedHTTPRequestV1::CACHE_NONE);
+		$cachedrequest->setCacheTTL(0);
+		$cachedrequest->send();
+		$this->assertTrue($cachedrequest->sent, "Request not sent");
+	}
+}

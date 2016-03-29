@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="exception" basedir="." default="build">
+	<property name="projectname" value="FTLabs Exception" />
+	<property name="ws" value="." />
+
+	<property name="phpunit_command" value="phpunit" />
+	<available file="/etc/php-debugging/php.ini" property="phpunit_command" value="php -c /etc/php-debugging/php.ini /usr/bin/phpunit" />
+
+	<target name="build">
+		<phingcall target="prepare" />
+	</target>
+
+	<target name="ci">
+		<phingcall target="test" />
+	</target>
+
+	<target name="test">
+		<echo msg="Running PHPUnit" />
+		<exec passthru="true" dir="${ws}/_tests" command="${phpunit_command}" checkreturn="true" />
+	</target>
+
+	<target name="prepare">
+		<echo msg="Prepare..." />
+		<phingcall target="installdependencies" />
+	</target>
+
+    <target name="installdependencies">
+		<exec dir="${ws}" passthru="true" command="composer install --optimize-autoloader" checkreturn="true" />
+    </target>
+</project>

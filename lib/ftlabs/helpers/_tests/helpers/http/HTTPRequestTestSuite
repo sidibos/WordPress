@@ -1,0 +1,26 @@
+<?php
+
+/**
+ * HTTPRequest Test Suite
+ *
+ * @copyright The Financial Times Limited [All rights reserved]
+ */
+class HTTPRequestTestSuite extends PHPUnit_Framework_TestSuite {
+
+	public static function suite() {
+        $suite = new HTTPRequestTestSuite();
+
+		$suite->addTestFiles(array(
+			__DIR__.'/HTTPRequestTest',
+			__DIR__.'/v1/CachedHTTPRequestTest',
+		));
+
+		return $suite;
+    }
+
+    protected function setUp() {
+    }
+
+    protected function tearDown() {
+    }
+}

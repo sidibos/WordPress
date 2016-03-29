@@ -1,0 +1,63 @@
+<?php
+
+require_once($_SERVER['CORE_PATH']."/helpers/mail/v1/mail");
+
+class MailTest extends PHPUnit_Framework_TestCase {
+	private $mail;
+
+	public function setUp() {
+		$this->mail = new AssankaEmail(dirname(__FILE__));
+
+	}
+
+	/**
+	 * @outputBuffering disabled
+	 */
+	public function testValidateRecipient() {
+		$this->assertTrue(!!$this->mail->validateEmail("an.ok.email@email.com"));
+		$this->assertFalse($this->mail->validateEmail("a.not.ok.email"));
+	}
+
+	/**
+	 * @outputBuffering disabled
+	 */
+	public function testGetSetSubject() {
+		// Test that a new line is stripped from the subject and replaced with a space.
+		$this->assertTrue($this->mail->setSubject("This subject contains a new\nline."));
+		$this->assertEquals("This subject contains a new line.", $this->mail->getSubject());
+
+		$this->assertTrue($this->mail->setSubject("This subject contains a new\rline."));
+		$this->assertEquals("This subject contains a new line.", $this->mail->getSubject());
+	}
+
+	/**
+	 * @outputBuffering disabled
+	 */
+	public function testSend() {
+		$this->mail->addRecipient("an.ok.email@email.com");
+		$this->mail->setSubject("Test");
+		$this->mail->setFrom("another.ok.email@email.com");
+		// Add two attachments via file-names
+		/*$fn1 = dirname(__FILE__)."/sampleattachment1.jpg";
+		$fn2 = dirname(__FILE__)."/sampleattachment2.png";
+		$this->mail->addAttachment($fn1);
+		$this->mail->addAttachment($fn2);*/
+
+		// Add two attachments via strings
+		/*$this->mail->addAttachment(file_get_contents($fn1), true, "string-".basename($fn1));
+		$this->mail->addAttachment(file_get_contents($fn2), true, "string-".basename($fn2));*/
+
+		// Render the body text and HTML from templates
+		$this->mail->set("recipientname", "PHPUnit");
+		$this->mail->set("teststring", "Hello there, this is PHPUnit!");
+		$this->mail->add("dots", ".");
+		$this->mail->add("dots", ".");
+		$this->mail->add("dots", ".");
+		$this->mail->setText($this->mail->render("sampleTextBody"));
+		$this->mail->setHTML("sampleHTMLBody");
+		$value = json_encode($this->mail->send());
+		$value = preg_replace(array('(==MultipartBoundaryOne_[0-9A-Za-z]{32})', '(==MultipartBoundaryTwo_[0-9A-Za-z]{32})'), '', $value);
+		$this->assertEquals('[{"to":"an.ok.email@email.com","subject":"Test","headers":"From: another.ok.email@email.com\nMIME-Version: 1.0\nContent-Type: multipart\/alternative;\n boundary=\"\"","body":"This is a multipart message in MIME format.\n\n--\nContent-Type: text\/plain; charset=\"iso-8859-1\"; format=flowed\n\nDear PHPUnit,\n\nHere is the test string: Hello there, this is PHPUnit!.\n\nHere are three dots: ...\n\nKind regards,\n\nAssanka\n--\nContent-Type: text\/html; charset=\"iso-8859-1\"; format=flowed\n\nsampleHTMLBody\n----\n"}]', $value);
+	}
+
+}

@@ -1,0 +1,139 @@
+<?php
+/*
+########################################################
+Stats page for Search keywords and phrases
+
+Upgraded to core v3 on 20th April 2006 by RB.
+
+04/11/2004
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+require_once("statslib");
+require_once($_SERVER["CORE_PATH"]."/web/nusoap/v1.81/nusoap.php");
+if (!checkIfAuth("statistics", "", false, array("sbe", "premium", "server"))) {
+	outputPremiumGuideAndExit(&$page);
+}
+
+// Allow results to persist for an hour
+header("Expires: " . date("r", time()+3600));
+header("Last-Modified: " . date("r", time()-3600));
+header("Cache-Control: max-age=3600");
+
+$page->waitmsg("connecting");
+
+// Create a new data table
+$tb = new datatable("searchkeywords", "visit");
+
+// Define columns
+$tb->addColumn("query", "Search query", "ASC");
+$tb->addColumn("hits", "Hits", "DESC", $tb->RIGHTALIGN);
+$tb->addColumn("rank", "<span style=\"color: rgb(25,90,223)\">G</span><span style=\"color: rgb(209,39,16)\">o</span><span style=\"color: rgb(242,192,2)\">o</span><span style=\"color: rgb(25,90,223)\">g</span><span style=\"color: rgb(8,148,15)\">l</span><span style=\"color: rgb(209,39,16)\">e</span> rank", "ASC");
+
+// Define filters
+$tb->addFilter("startdate", "Start month (mm/yyyy)", "partialtext", "s", false, date('m/Y'));
+$tb->addFilter("enddate", "End month (mm/yyyy)", "partialtext", "e", false, date('m/Y'));
+
+// Set default sort-by column
+$tb->setSort("hits");
+
+// Process the date filter
+$startdate = Common::convertHumanTime($tb->getFilterValue("startdate"));
+$enddate = Common::convertHumanTime($tb->getFilterValue("enddate"));
+checkDateFilters(&$startdate, &$enddate, &$page);
+
+$counts = getKeywords(date("mY", $startdate), date("mY", $enddate));
+
+// Grab a count of the numbers of pages left before pagination, and page count
+$numresults = count($counts);
+$numpages = ceil($numresults/$tb->rowsperpage);
+
+// Deal with sorting the data...
+sortArrayBasedTable(&$counts, &$tb);
+
+// Define page number, default to page 1
+$pno = (is_numeric($_GET["p"])) ? $_GET["p"] : 1;
+
+// Paginate the pages list (!)
+if (count($counts) > $tb->rpp) {
+	$counts = array_slice($counts, (($pno * $tb->rowsperpage) - $tb->rowsperpage), $tb->rowsperpage);
+}
+
+// Create a sitehosts array for use with getGoogleRank
+$sitehostarray = array();
+foreach ($SITEHOSTS as $sitehost) $sitehostarray[$sitehost] = $sitehost;
+if (!$sitehostarray[$_SERVER["SERVER_NAME"]]) $sitehostarray[$_SERVER["SERVER_NAME"]] = $_SERVER["SERVER_NAME"];
+
+$googlesearches = 0;
+foreach ($counts as $data) {
+	if ($googlesearches < 10) {
+		$data["rank"] = getGoogleRank($data["query"], $sitehostarray);
+		if ($data["rank"] == -1) {
+			$data["rank"] = "<span style=\"color: red\">Unable to connect</span>";
+		} else if ($data["rank"] > 11) {
+			$data["rank"] = "Not in top 10";
+		} else {
+			$data["rank"] = "<strong>Ranked ".$data["rank"]."</strong>";
+		}
+		$googlesearches++;
+	} else {
+		$data["rank"] = "Search";
+	}
+	$data["rank"] = "<a href=\"http://www.google.com/search?q=".$data["query"]."\">".$data["rank"]."</a>";
+	$data["query"] = str_replace("/", "/&shy;<wbr />", $data["query"]);
+	$data["hits"] = number_format($data["hits"]);
+	$tb->addRow($data);
+}
+
+// Construct the page
+$page->addContent("content", $tb->outputTable());
+$page->addContent("context", $db->outputPagination($numresults, $numpages, $pno, "search keyword"));
+$page->addContent("context", $tb->outputFilterform());
+$page->addContent("context", getStatsDateString($startdate, $enddate));
+$page->addContent("context", file_get_contents("/assanka/web/admin/v3/stats/html/searchkeywordsinfo"));
+
+$page->render();
+
+function getGoogleRank($query, $sitehostarray=false) {
+
+	// If no sitehosts set, we can't match in any case
+	if (empty($sitehostarray)) return 100;
+	
+	// Specify Google licence key and namespace
+	$key = "tW1jcg9QFHKXNWY5giatfSrHSTwmjoP6";
+	$namespace = "urn:GoogleSearch";
+	
+	// Create a new SOAP client
+	$sc = new soapclient("http://api.google.com/search/beta2");
+
+	// Define parameters of the request
+	$params = array(
+		"key" => $key,
+		"q" => $query,
+		"start" => 0,
+		"maxResults" => 10,
+		"filter" => true,
+		"restrict" => "",
+		"safeSearch" => false,
+		"lr" => "lang_en",
+		"ie" => "",
+		"oe" => ""
+	);
+
+	// Send the request
+	$response = $sc->call("doGoogleSearch", $params, $namespace);
+
+	// Check for error response
+	if ($sc->fault) {
+		return -1;
+	} else {
+		for ($i=0; $i<=9; $i++) {
+			$u = parse_url($response["return"]["resultElements"][$i]["URL"]);
+			if ($sitehostarray[$u["host"]]) return $i+1;
+		}
+	}
+	return 100;
+}
+?>

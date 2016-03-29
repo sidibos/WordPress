@@ -1,0 +1,28 @@
+#!/usr/local/bin/php
+<?php
+
+/**
+ * A simple daemon which writes the date
+ */
+
+
+require_once dirname(__FILE__).'/../daemon';
+
+
+$daemon = new Daemon();
+$daemon->setPidFile(dirname(__FILE__)."/logwriter.pid");
+$daemon->setLogFile(dirname(__FILE__)."/oldlog");
+$daemon->setHelp("log writer", "Just writes stuff to a log file.");
+
+try {
+
+	// Limit the daemon to 4 processes per server (if running as a daemon)
+	$daemon->autoDetach(4);
+} catch (Exception $e) {
+	die();
+}
+
+while (true) {
+	$daemon->writelog(date('c'));
+	sleep(1);
+}

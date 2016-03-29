@@ -1,0 +1,18 @@
+<?php
+/**
+ * Class for results returned by MySqlConnectionV4
+ * 
+ * Using the core for this is deprecated.  See http://git.ak.ft.com/ftlabs/mysql for the latest version
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Requires that the connection has been included as that's where MySqlQueryException is defined.
+require_once $_SERVER['CORE_PATH'].'/helpers/database/mysql/v4/connection';
+
+
+if (!class_exists('FTLabs\MySqlResult')) require_once $_SERVER['CORE_PATH'].'/vendor/ftlabs/mysql/src/FTLabs/MySqlResult.php';
+
+class_alias('FTLabs\MySqlResult', 'MySQLResultV4');
+if (!class_exists('MySQLResult')) class_alias('MySQLResultV4', 'MySQLResult');

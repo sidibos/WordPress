@@ -1,0 +1,30 @@
+<?php
+/**
+ * Script which receives beanstalk messages and prints them to screen
+ *
+ * $Revision$
+ * $Date$
+ * $Author$
+ *
+ * @codingstandard Assanka
+ * @author Luke Blaney <luke.blaney@assanka.net>
+ * @copyright Assanka Limited [All rights reserved]
+ */
+
+
+require_once $_SERVER['CORE_PATH'].'/helpers/messaging/beanstalk/v2/beanstalk';
+
+$in = new BeanstalkPool(array('selecttimeout' => 5));
+$in->watch('assanka-test-multi');
+
+while (true) {
+	$job = $in->reserve(1);
+	if (!$job) {
+		echo "Timed out - trying again\n";
+		continue;
+	}
+
+	echo "Rec: ".$job->getBody()."\n";
+	$job->delete();
+
+}

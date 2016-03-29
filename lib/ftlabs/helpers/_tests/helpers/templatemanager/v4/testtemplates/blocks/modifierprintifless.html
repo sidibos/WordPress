@@ -1,0 +1,15 @@
+This is some sample content to check that the "printifless" modifier is working correctly for numeric values.
+<!--@BLOCK:checkifless|printifless:braid:123-->
+This block is output because the variable is less.
+<!--@ENDBLOCK:checkifless-->
+
+<!--@BLOCK:checkifless|ifless:braid:123-->
+This block is output because the variable is less, using a shorter form of the template syntax.
+<!--@ENDBLOCK:checkifless-->
+
+<!--@BLOCK:nestouter-->
+	<!--@BLOCK:checkifless|printifless:braid:123-->
+	This block is output because the variable is less, within another block.
+	<!--@ENDBLOCK:checkifless-->
+<!--@ENDBLOCK:nestouter-->
+Ta-da!

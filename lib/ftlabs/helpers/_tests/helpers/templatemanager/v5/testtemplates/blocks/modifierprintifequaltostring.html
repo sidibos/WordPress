@@ -1,0 +1,15 @@
+This is some sample content to check that the "printifequalto" modifier is working correctly for string values.
+<!--@BLOCK:checkifequal|printifequalto:braid:"test"-->
+This block is output because the variable matches.
+<!--@ENDBLOCK:checkifequal-->
+
+<!--@BLOCK:checkifequal|ifequalto:braid:"test"-->
+This block is output because the variable matches, using a shorter form of the template syntax.
+<!--@ENDBLOCK:checkifequal-->
+
+<!--@BLOCK:nestouter-->
+	<!--@BLOCK:checkifequal|printifequalto:braid:"test"-->
+	This block is output because the variable matches, within another block.
+	<!--@ENDBLOCK:checkifequal-->
+<!--@ENDBLOCK:nestouter-->
+Ta-da!

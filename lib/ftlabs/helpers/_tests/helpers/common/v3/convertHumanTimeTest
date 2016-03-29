@@ -1,0 +1,83 @@
+<?php
+/**
+ * Test for common::convertHumanTime
+ *
+ * $Revision$
+ * $Date$
+ * $Author$
+ *
+ * @codingstandard Assanka
+ * @author Luke Blaney <luke.blaney@assanka.net>
+ * @copyright Assanka Limited [All rights reserved]
+ */
+
+require_once $_SERVER['CORE_PATH'].'/helpers/common/v3/common';
+
+class convertHumanTimeTest extends PHPUnit_Framework_TestCase {
+
+
+	public function testMethodLeavesDateTimeObjectUntouched() {
+		$input = new DateTime();
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals($input, $output, "Method changed DateTime object");
+	}
+	public function testMethodAcceptsSpecificDate() {
+		$input = "2011-04-06 16:10:29";
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals($input, $output->format('Y-m-d H:i:s'), "Wrong time returned");
+	}
+	public function testMethodAcceptsHumanDate() {
+		$input = "6th April 2011";
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals("2011-04-06", $output->format('Y-m-d'), "Wrong time returned");
+	}
+	public function testMethodAcceptsRelativeDate() {
+		$input = "today";
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals(date("Y-m-d"), $output->format('Y-m-d'), "Wrong time returned");
+	}
+	public function testMethodAcceptsBritishDateFormat() {
+		$input = "06/04/2011";
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals("2011-04-06", $output->format('Y-m-d'), "Wrong time returned");
+	}
+	public function testMethodUnixTimestamp() {
+		$input = 1302171980;
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals(date('r', $input), $output->format('r'), "Wrong time returned");
+	}
+	public function testMethodUnixTimestampAsString() {
+		$input = "1302171980";
+		$output = common::convertHumanTime($input);
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals(date('r', $input), $output->format('r'), "Wrong time returned");
+	}
+	public function testMethodAcceptsTimezone() {
+		$input = "14 April 1912 23:40";
+		$tz = 'Antarctica/McMurdo';
+		$output = common::convertHumanTime($input, new DateTimeZone($tz));
+		$this->assertInstanceOf('DateTime', $output, "Method doesn't output DateTime object");
+		$this->assertEquals($tz, $output->getTimezone()->getName(), "Wrong timezone returned");
+		$this->assertEquals("1912-04-14 23:40", $output->format('Y-m-d H:i'), "Wrong time returned");
+	}
+	public function testInvalidTimeReturnsNull() {
+		$input = "5.5/Apple/26";
+		$output = common::convertHumanTime($input);
+		$this->assertFalse($output, "Method doesn't return false");
+	}
+
+
+	/* Regression tests */
+
+	public function testShouldNotInterpretShorthandDatesWithTwoDigitYearAsTimes() {
+		$input = "22-09-11";
+		$output = Common::convertHumanTime($input);
+		$this->assertEquals("2011-09-22", $output->format("Y-m-d"));
+	}
+}

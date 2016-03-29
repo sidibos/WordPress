@@ -1,0 +1,18 @@
+{
+	"name": "ftlabs/logger",
+	"description": "PHP Logging interface that conforms to PSR-3 standard interface",
+	"repositories": [
+		{"type": "composer", "url": "http://composer.labs.ft.com"}
+	],
+	"require": {
+		"psr/log": "~1.0",
+		"ftlabs/exception": "~1.1",
+		"raven/raven": "~0.12.0"
+	},
+	"autoload": {
+		"psr-0": {
+			"Testing": "test/",
+			"FTLabs": "src/"
+		}
+	}
+}
