@@ -13,5 +13,5 @@ error_reporting(E_ALL | E_STRICT);
 
 session_start();
 
-require_once dirname(__FILE__).'/../lib/Raven/Autoloader.php';
+require_once dirname(__FILE__) . '/../lib/Raven/Autoloader.php';
 Raven_Autoloader::register();
