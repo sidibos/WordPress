@@ -1,3 +1,0 @@
-<h3>Information</h3>
-<div class="paddedcontent">The types of files that make up a website are mostly images (GIF, JPEG, PNG); pages (HTML, PHP); styles (CSS), javascripts (JS), plugins and binary downloads.  This page shows you the proportion of traffic on the site that is requesting each file type.</div>
-<div class="paddedcontent">Remember that a request for a single web page will also probably result in at least one request for a stylesheet, and may load numerous images.</div>
