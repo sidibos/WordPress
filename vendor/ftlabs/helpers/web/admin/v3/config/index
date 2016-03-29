@@ -1,5 +1,0 @@
-<?php
-require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
-if (!isset($_SERVER["ADMIN_AREA_PATH"])) trigger_error("Required constant ".$_SERVER["ADMIN_AREA_PATH"]." not set in environment", E_USER_ERROR);
-header("Location: ".$_SERVER["ADMIN_AREA_PATH"]."/config/users/");
-?>
