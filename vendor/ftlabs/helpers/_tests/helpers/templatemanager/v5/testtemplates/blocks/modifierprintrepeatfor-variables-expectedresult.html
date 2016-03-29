@@ -1,0 +1,66 @@
+This is some sample content to check that the "repeatfor" block modifier is working correctly with regards to variable output within the loop.
+
+First, tests of variable availability within blocks from the "repeatfor" argument itself:
+
+
+Single variables should be output directly, as both single variable and single variable.
+
+
+
+List variables should be output multiply, as both list item one and list item one.
+
+List variables should be output multiply, as both list item two and list item two.
+
+
+
+Collections should have their variables available via keys; for example value one and value two.
+
+Collections should have their variables available via keys; for example value uno and value dos.
+
+Collections should have their variables available via keys; for example value ein and value zwei.
+
+
+Next check that variables set on the templatemanager as a whole are still available within the blocks:
+
+
+Single variables should be output directly, as both single variable and single variable.  Variables such as this one and even another one should be available.
+
+
+
+List variables should be output multiply, as both list item one and list item one.  Variables such as this one and even another one should be available.
+
+List variables should be output multiply, as both list item two and list item two.  Variables such as this one and even another one should be available.
+
+
+
+Collections should have their variables available via keys; for example value one and value two.  Variables such as this one and even another one should be available.
+
+Collections should have their variables available via keys; for example value uno and value dos.  Variables such as this one and even another one should be available.
+
+Collections should have their variables available via keys; for example value ein and value zwei.  Variables such as this one and even another one should be available.
+
+
+Next check that variables inside collection blocks override those set outside blocks:
+
+
+Collections should allow access to external variables, like this one, but internal variables like value three should be preferred.
+
+Collections should allow access to external variables, like this one, but internal variables like value tres should be preferred.
+
+Collections should allow access to external variables, like this one, but internal variables like value drei should be preferred.
+
+
+Similarly for nested loops:
+
+
+This outer block is for collections, and includes value one and value two as well as the base value.
+	The inner block should still have this one available, and should prefer value one and value three. The inner block should still have this one available, and should prefer value one and value three. 
+
+This outer block is for collections, and includes value uno and value dos as well as the base value.
+	The inner block should still have this one available, and should prefer value uno and value tres. The inner block should still have this one available, and should prefer value uno and value tres. 
+
+This outer block is for collections, and includes value ein and value zwei as well as the base value.
+	The inner block should still have this one available, and should prefer value ein and value drei. The inner block should still have this one available, and should prefer value ein and value drei. 
+
+
+All done...

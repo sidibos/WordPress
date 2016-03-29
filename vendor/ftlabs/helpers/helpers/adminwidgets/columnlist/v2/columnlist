@@ -1,0 +1,219 @@
+<?php
+/**
+ * Column list
+ *
+ * Create a table of data displayed in columns of
+ * name/value pairs
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+class ColumnlistV2 extends TemplateManager {
+
+	private $cols, $fields, $data, $totallines, $emptytext, $clname, $defaultdefs = false;
+
+	/**
+	 * Creates a columnlist object
+	 * 
+	 * @param   string  $name   Name of the columnlist
+	 * @return  ColumnlistV2
+	 */
+	function __construct($name=null) {
+		parent::__construct($_SERVER["CORE_PATH"]."/helpers/adminwidgets/columnlist/v2/");
+		$this->cols = 1;
+		$this->data = array();
+		$this->fields = array();
+		$this->totallines = 0;
+		$this->emptytext = "Not specified";
+		$this->clname = $name;
+	}
+
+	/**
+	 * Sets the title of the list
+	 *
+	 * If no title is set, the list will not be prefixed with a title (better if the list is the first/only item on a Core admin page)
+	 * 
+	 * @param   string  $str   Title for the columnlist
+	 * @return  void
+	 */
+	function setTitle($str) {
+		$this->set("title", $str);
+	}
+
+	/**
+	 * Set default definition data for fields
+	 * 
+	 * Loads a set of definition data into the class, allowing fields to be added to the column list without specifying individual definitions for each one.  Sets the default options for addField and addFields calls. Useful to pass a model of your data structure into the datatable in one go.
+	 *
+	 * @param   array   $defdata   Associative array of field names to arrays containing definition data
+	 * @return  void
+	 */
+	function useDefinitions(&$defdata) {
+		if (!is_array($defdata)) trigger_error("Default definition data must be an array", E_USER_ERROR);
+		$this->defaultdefs = $defdata;
+	}
+
+	/**
+	 * Sets the text to be displayed if there is no value for any item
+	 *
+	 * Will be used in place of any value that is not set, or is set to null or false.  A value of an empty string or zero will be displayed.
+	 * 
+	 * @param   string  $str   Text to display for empty items
+	 * @return  void
+	 */
+	function setEmptyText($str) {
+		$this->emptytext = $str;
+	}
+
+	/**
+	 * Sets the number of columns in the list
+	 *
+	 * Columnlist will attempt to divide your content into columns of equal height, based on the number of items, and number of line breaks in each item (this is primitive - Columnlist assumes that each item contains only short lines that won't wrap).  If you choose to break columnns manually using addColBreak, you should avoid setting a number higher than 1 (setting to 1 will effectively disable automatic column breaks).  The default is 1.
+	 * 
+	 * @param   integer  $num   Number of columns
+	 * @return  void
+	 */
+	function setNumCols($num) {
+		$this->cols = $num;
+	}
+
+	/**
+	 * Add a field to the list
+	 *
+	 * The second argument to this method is an associative array of parameters decribing the behaviour of the field.  Any or all of the following keys may be set:
+	 * <dl>
+	 * <dt>label</dt><dd>String, label to apply to field. If omitted, will use field name capitalised.</dd>
+	 * <dt>displaycallback</dt><dd>Mixed, callback function to be called by Columnlist before displaying data in this field. If a globally defined function, pass the name of the function in a string. If a method of a statically defined class, pass the name of the class and the method as elements in a simple two-element array. If a method of an object instance, pass a reference to the object and the name of the function in a simple two element array.</dd>
+	 * <dt>displaymodifiers</dt><dd>String, standard template manager display modifiers to be applied by the template manager prior to display of data in this field.</dd>
+	 * </dl>
+	 * 
+	 * @param   string  $name        Name of field, to use as the ID in the DOM, and as a reference for the field when adding data to the list
+	 * @param   array   $definition  Array of options defining the field
+	 * @param   string  $value       Data to display in the field (optional, can also be added in bulk using addData)
+	 * @return  void
+	 */
+	function addField($name, $definition=array(), $value=null) {
+		if (array_key_exists($name, $this->fields)) trigger_error("Field '".$name."' already exists, ignoring this field.", E_USER_NOTICE);
+		if (!is_array($definition)) trigger_error("Field definition must be an array", E_USER_ERROR);
+		if (empty($definition) and !empty($this->defaultdefs[$name])) $definition = $this->defaultdefs[$name];
+		$this->fields[$name] = $definition;
+		if ($value !== null) $this->data[$name] = $value;
+	}
+
+	/**
+	 * Adds lots of fields to the column list
+	 * 
+	 * Add multiple fields to the list, with no definition parameters (default definitions will be used if they are available, see useDefinitions).  Pass as many arguments as you there are fields you wish to add.
+	 *
+	 * @param   string   $col1   Name of field 1
+	 * @param   string   $col2   Name of field 2
+	 * @param   string   $coln   Name of field n
+	 * @return  void
+	 */
+	function addFields() {
+		$arglist = func_get_args();
+		foreach ($arglist as $arg) $this->addField($arg);
+	}
+
+	/**
+	 * Inserts a manual column break
+	 *
+	 * Forces the column list to break at the point the method is called (ie all addField calls made before addColBreak will be in one column, and al following it will be in a different column).  If you add a manual break, you should avoid setting a number of columns with setNumCols to a number greater than 1.  
+	 * 
+	 * @return  void
+	 */
+	function addColBreak() {
+		$this->fields[] = array("type"=>"break");
+	}
+
+	/**
+	 * Adds a title to a column
+	 *
+	 * It is recommended that you use this only after addColBreak, since there is no guarantee that an automatic column break will occur just before the column title, which means its possible for a column title to appear in the middle of a column.  So use it only with manual column breaking.
+	 * 
+	 * @param   integer  $num   Number of columns
+	 * @return  void
+	 */
+	function addColTitle($title) {
+		$this->fields[] = array("type"=>"title", "title"=>$title);
+	}
+
+	/**
+	 * Adds a one line break to the column
+	 *
+	 * @return  void
+	 */
+	function addSpacer() {
+		$this->fields[] = array("type"=>"spacer");
+	}
+
+	/**
+	 * Populates a columnlist with data
+	 *
+	 * @param   array  $data  Associative array of data, where keys match names of columnlist fields, and values are scalars that can be displayed in the list.
+	 * @return  void
+	 */
+	function addData($data) {
+		foreach($data as $field=>$val) {
+			foreach ($this->fields as $key=>$params) {
+				if ($field==$key and empty($this->data[$key]) and empty($params["type"])) {
+					$this->fields[$key]["lines"] = (substr_count($val, "\n") + 1);
+					$this->totallines += $this->fields[$key]["lines"];
+					break;
+				}
+			}
+			$this->data[$field] = $val;
+		}
+	}
+
+	/**
+	 * Returns an XHTML representation of the columnlist
+	 *
+	 * @return  string   HTML data
+	 */
+	function output() {
+		$values = array();
+		foreach($this->fields as $key => $field) {
+			if (!isset($field["lines"])) {
+				$this->fields[$key]["lines"] = 1;
+				$this->totallines++;
+			}
+		}
+		$linespercol = ceil($this->totallines / $this->cols);
+		$linessofar = 0;
+		$currentcol = 1;
+		foreach($this->fields as $key => $field) {
+			if (!empty($field["type"]) and $field["type"]=="break") {
+				$data = array("endofcol" => 1);
+				$currentcol++;
+			} elseif (!empty($field["type"]) and $field["type"]=="title") {
+				$data = $field;
+				$linessofar++;
+			} elseif (!empty($field["type"]) and $field["type"]=="spacer") {
+				$data = array("label"=>"", "valrow"=>"&nbsp;");
+				$linessofar++;
+			} else {
+				if (empty($field["label"])) $field["label"] = ucwords($key);
+				$data = array("label"=>$field["label"], "key"=>$key);
+				$val = (!empty($field["displaycallback"])) ? call_user_func($field["displaycallback"], $key, $this->data) : ((isset($this->data[$key]))?$this->data[$key]:null);
+				if ($val !== null and $val !== false and $val !== '') {
+					$this->set("value", $val);
+					$template = "<!--@value|nl2br" . ((!empty($field["displaymodifiers"]))?",".$field["displaymodifiers"]:"") . "-->";
+					$data["valrow"] = $this->renderFromString($template);
+				} else {
+					$data["valrow"] = "<em>".$this->emptytext."</em>";
+				}
+				$linessofar += $field["lines"];
+				if ($linessofar >= ($linespercol*$currentcol)) {
+					$data["endofcol"] = 1;
+					$currentcol++;
+				}
+			}
+			$this->add("data", $data);
+		}
+		$this->set("clname", $this->clname);
+
+		return $this->render("template");
+	}
+}
+
+if (!class_exists('Columnlist')) class_alias('ColumnlistV2', 'Columnlist');

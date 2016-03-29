@@ -1,0 +1,355 @@
+<?php
+/**
+ * CMS tasks page - displays all drafts available to a user, sent to
+ * a user, sent by a user, for pages and assets.
+ *
+ * These include self-saved drafts, new pages that weren't
+ * completed, and pages sent for review by another user.
+ *
+ * Accepted Inputs: none
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once("cmslib");
+
+// Error if drafts aren't enabled for this project
+if (!cmsIsFunctionalityEnabled("drafts") or !cmsIsFunctionalityEnabled("taskdashboard")) trigger_error(APPNAME." does not have the correct permissions to use the drafts functionality.", E_USER_ERROR);
+
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+
+// Config **todo** - get and set the language
+$languageisocode = "en";
+$formats = $db->query("SELECT dateformat, timeformat FROM out_languages WHERE isocode='".$languageisocode."'");
+$formatsrow = $db->fetchrow($formats);
+$dateFormat = $formatsrow["dateformat"];
+$timeFormat = $formatsrow["timeformat"];
+
+// If the post action is retrieve, retrieve before showing page
+if (($_GET["action"] == "retrieve") && is_numeric($_GET["id"])) {
+	$draftuser = $db->querySingle("SELECT draftuser FROM out_versions LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date WHERE out_versions.id=".$_GET["id"]." AND authoruser='".$authuser."' AND user='".$authuser."' AND actiontype='send for review'");
+	if ($draftuser) {
+		$db->query("DELETE l FROM out_actionlog l LEFT JOIN out_versions v ON v.id=l.versionid AND v.datecreated=l.date WHERE v.id=".$_GET["id"]." AND authoruser='".$authuser."' AND user='".$authuser."' AND actiontype='send for review'");
+		$db->query("UPDATE out_versions SET draftuser='".$authuser."' WHERE id=".$_GET["id"]);
+		$db->query("INSERT INTO out_actionlog SET versionid=".$_GET["id"].", user='".$authuser."', actiontype='retrieve draft', comment='Draft previosuly sent to ".$draftuser."', date=NOW()");
+	}
+}
+
+// Add javascript
+$page->addContent("content", "<script type=\"text/javascript\" src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/js/outline\"></script><script type=\"text/javascript\">var tasktables = new outlineTasksTableGroupHandler();</script>");
+
+// Load drafts sent to this user to review
+$drafttoreviewresult = $db->query("SELECT out_versions.id, webroot, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, comment, cfg_adminusers2.name AS draftsender, cfg_adminusers.name AS author, type, tag FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN cfg_adminusers AS cfg_adminusers2 ON out_actionlog.user=cfg_adminusers2.htaccessuser LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser='".$authuser."' AND authoruser!='".$authuser."' ORDER BY datecreated ASC");
+if ($db->numresults($drafttoreviewresult)) {
+	
+	// Create a new data table for drafts sent to this user to review
+	$tb = new datatable("draftstoreview", "version", 50, "Drafts Sent To Me For Review", false);
+	
+	// Define columns
+	$tb->addColumn("icon", "", false, false, 18);
+	$tb->addColumn("title", "Title", "DESC");
+	$tb->addColumn("author", "Draft author", "ASC");
+	$tb->addColumn("draftsender", "Sent by", "ASC");
+	$tb->addColumn("created", "Sent", "ASC");
+	$tb->addColumn("type", "Type", "ASC", false, 60);
+	$tb->setSort("datecreated");
+	
+	$javascriptstring = "";
+	while ($row = $db->fetchrow($drafttoreviewresult)) {
+		$row["icon"] = "<img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/icon16_".$row["type"]."hidden.gif\" id=\"id".$row["id"]."\">";
+		$row["type"] = ucfirst($row["type"]);
+		if ($authuser == $row["author"]) $row["author"] = "Me";
+		$tb->addRow($row, false);
+		$javascriptstring .= "draftstoreview.addHandler(".$row["id"].", '<strong>".addslashes($row["title"])."</strong><br />".$row["type"]." draft by ".$row["author"]."<br />".$row["created"]."<br /><br /><strong>You were sent this draft by ".addslashes($row["draftsender"])." with ".(($row["comment"])?"the comment:</strong><br />".addslashes($row["comment"]):"no comment.")."'); ";
+	}	
+	$page->addContent("content", $tb->outputTable());
+	$page->addContent("content", "<script type=\"text/javascript\">var draftstoreview = new outlineTasksTableHandler(true, false, tasktables); ".$javascriptstring."</script>");
+}
+
+
+// Load drafts returned to this user
+$draftsreturnedresult = $db->query("SELECT out_versions.id, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, comment, out_actionlog.user, cfg_adminusers2.name AS draftreturner, authoruser, cfg_adminusers.name AS author, draftusers.name AS draftuser, type, tag, webroot FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN cfg_adminusers AS draftusers ON out_versions.draftuser=draftusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN cfg_adminusers AS cfg_adminusers2 ON out_actionlog.user=cfg_adminusers2.htaccessuser LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser='".$authuser."' AND out_actionlog.actiontype='return draft' ORDER BY datecreated ASC");
+if ($db->numresults($draftsreturnedresult)) {
+	
+	// Create a new data table for drafts returned to this user
+	$tb = new datatable("draftsreturned", "version", 50, "Drafts Returned To Me", false);
+	
+	// Define columns
+	$tb->addColumn("icon", "", false, false, 18);
+	$tb->addColumn("title", "Title", "DESC");
+	$tb->addColumn("author", "Author", "ASC");
+	$tb->addColumn("draftreturner", "Returned by", "ASC");
+	$tb->addColumn("created", "Sent", "ASC");
+	$tb->addColumn("type", "Type", "ASC", false, 60);
+	$tb->setSort("datecreated");
+	
+	$javascriptstring = "";
+	while ($row = $db->fetchrow($draftsreturnedresult)) {
+		$row["icon"] = "<img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/icon16_".$row["type"]."hidden.gif\" id=\"id".$row["id"]."\">";
+		$row["type"] = ucfirst($row["type"]);
+		if ($authuser == $row["author"]) $row["author"] = "Me";
+		$tb->addRow($row, false);
+		$javascriptstring .= "draftsreturned.addHandler(".$row["id"].", '<strong>".addslashes($row["title"])."</strong><br />".$row["type"]." draft by ".$row["author"]."<br />".$row["created"]."<br /><br /><strong>Draft returned by ".addslashes($row["draftreturner"])." with ".(($row["comment"])?"the comment:</strong><br />".addslashes($row["comment"]):"no comment.")."'); ";
+	}	
+	$page->addContent("content", $tb->outputTable());
+	$page->addContent("content", "<script type=\"text/javascript\">var draftsreturned = new outlineTasksTableHandler(true, false, tasktables); ".$javascriptstring."</script>");
+}
+
+
+
+// Load drafts saved by this user
+$mydraftsresult = $db->query("SELECT out_versions.id, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, cfg_adminusers.name AS author, type, tag, webroot FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser='".$authuser."' AND authoruser='".$authuser."' AND ((out_actionlog.actiontype != 'send for review' AND out_actionlog.actiontype != 'return draft') OR out_actionlog.actiontype IS NULL) ORDER BY datecreated ASC");
+if ($db->numresults($mydraftsresult)) {
+	
+	// Create a new data table for drafts saved by this user
+	$tb = new datatable("mydrafts", "version", 50, "Drafts I've Saved", false);
+	
+	// Define columns
+	$tb->addColumn("icon", "", false, false, 18);
+	$tb->addColumn("title", "Title", "DESC");
+	$tb->addColumn("created", "Last modified", "ASC");
+	$tb->addColumn("type", "Type", "ASC", false, 60);
+	$tb->setSort("datecreated");
+	
+	$javascriptstring = "";
+	while ($row = $db->fetchrow($mydraftsresult)) {
+		$row["icon"] = "<img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/icon16_".$row["type"]."hidden.gif\" id=\"id".$row["id"]."\">";
+		$row["type"] = ucfirst($row["type"]);
+		$tb->addRow($row, false);
+		$javascriptstring .= "mydrafts.addHandler(".$row["id"].", '<strong>".addslashes($row["title"])."</strong><br />".$row["type"]." draft by ".$row["author"]."<br />".$row["created"]."'); ";
+	}	
+	$page->addContent("content", $tb->outputTable());
+	$page->addContent("content", "<script type=\"text/javascript\">var mydrafts = new outlineTasksTableHandler(true, false, tasktables); ".$javascriptstring."</script>");
+}
+
+
+
+// Load drafts sent by this user
+$draftssentresult = $db->query("SELECT out_versions.id, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, comment, out_actionlog.user, cfg_adminusers2.name AS draftsender, cfg_adminusers.name AS author, draftusers.name AS draftuser, type, tag, webroot FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN cfg_adminusers AS draftusers ON out_versions.draftuser=draftusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN cfg_adminusers AS cfg_adminusers2 ON out_actionlog.user=cfg_adminusers2.htaccessuser LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser!='".$authuser."' AND authoruser='".$authuser."' ORDER BY datecreated ASC");
+if ($db->numresults($draftssentresult)) {
+	
+	// Create a new data table for drafts sent by this user
+	$tb = new datatable("draftssent", "version", 50, "Drafts Sent For Review", false);
+	
+	// Define columns
+	$tb->addColumn("icon", "", false, false, 18);
+	$tb->addColumn("title", "Title", "DESC");
+	$tb->addColumn("draftsender", "Sent from", "DESC");
+	$tb->addColumn("draftuser", "Sent to", "DESC");
+	$tb->addColumn("created", "Sent", "ASC");
+	$tb->addColumn("type", "Type", "ASC", false, 60);
+	$tb->setSort("datecreated");
+	
+	$javascriptstring = "";
+	while ($row = $db->fetchrow($draftssentresult)) {
+		$row["icon"] = "<img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/img/icons/icon16_".$row["type"]."hidden.gif\" id=\"id".$row["id"]."\">";
+		$row["type"] = ucfirst($row["type"]);
+		if ($authuser == $row["draftsender"]) $row["draftsender"] = "Me";
+		$tb->addRow($row, false);
+		$javascriptstring .= "draftssent.addHandler(".$row["id"].", '<strong>".addslashes($row["title"])."</strong><br />".$row["type"]." draft by ".$row["author"]."<br />".$row["created"]."<br /><br />".(($row["user"] == $authuser)?"<strong>Draft sent to ".$row["draftuser"]." with ".(($row["comment"])?"the comment:</strong><br />".addslashes($row["comment"]):"no comment."):"This draft has been forwarded from ".$row["draftsender"]." to ".$row["draftuser"]." for further review.")."'); ";
+	}	
+	$page->addContent("content", $tb->outputTable());
+	$page->addContent("content", "<script type=\"text/javascript\">var draftssent = new outlineTasksTableHandler(false, true, tasktables); ".$javascriptstring."</script>");
+}
+
+if ($db->numresults($drafttoreviewresult) or $db->numresults($draftsreturnedresult) or $db->numresults($mydraftsresult) or $db->numresults($draftssentresult)) {
+	$page->alert("Please select a draft to see details and associated tasks.");
+	$page->addContent("context", $page->loadExternalContent("html/taskssidebar"));
+} else {
+	$page->alert("You currently have no tasks!<br />This page normally lists your drafts, and any drafts sent to you for review.  To create a draft, edit a page and use the 'Save as draft' button.");
+}
+
+// Create page actions, both invisible at load
+$page->addAction("draftedit", "Edit draft", false, false, false, true);
+$page->addAction("retrievedraft", "Retrieve draft", false, false, false, true);
+
+$page->render();
+
+exit;
+
+
+htm_header();
+?>
+	<td class="centrepanel">
+	<script type="text/javascript">
+	var lastrow = currentrow = -1;
+	var doubleClickTime = 0;
+	var oldColor;
+	
+	// selectrow provides right-hand toolbar changes according to selection,
+	// as well as deselection and double-click handling
+	function selectrow(versionid, allowedit, allowretrieve, title, author, mod, tag, longtext, siteroot) {
+		var currentTime = new Date();
+		if (currentrow != -1) {
+			var tds = document.getElementById("tr"+currentrow).getElementsByTagName("td");
+			for (var i = 0; i < tds.length; i++) {
+				tds[i].style.backgroundColor = oldColor;
+				tds[i].style.color = "black";
+			}
+		}
+		publiclink = document.getElementById("userinfo").getElementsByTagName("a").item(0);
+		if ((lastrow == versionid) && ((currentTime.getTime() - doubleClickTime) < 750) && allowedit) {
+			window.location.href = "edit?id=" + versionid + "&type=draft";
+		}
+		if (currentrow == versionid) {
+			document.getElementById("pagedetails").style.display = "none";
+			document.getElementById("pagetasks").style.display = "none";
+			document.getElementById("noneselected").style.display = "inline";
+			publiclink.href = "http://<?=$_SERVER["HTTP_HOST"]?>/";
+			currentrow = -1;
+		} else {
+			lastrow = currentrow = versionid;
+			document.getElementById("noneselected").style.display = "none";
+			document.getElementById("pagedetails").style.display = "inline";
+			document.getElementById("pagetasks").style.display = "inline";
+			document.getElementById("pagetitle").innerHTML = title;
+			document.getElementById("pageauth").innerHTML = author;
+			document.getElementById("pagemod").innerHTML = mod;
+			document.getElementById("pagetext").innerHTML = (longtext)?longtext:"";
+			
+			// Tint the selected row - to work with the stripe function, this
+			// needs to iterate through each cell!
+			var tds = document.getElementById("tr"+versionid).getElementsByTagName("td");
+			oldColor = tds[0].style.backgroundColor;
+			for (var i = 0; i < tds.length; i++) {
+				tds[i].style.backgroundColor = "rgb(49,106,197)";
+				tds[i].style.color = "white";
+			}
+			document.getElementById("editbutton").style.display = (allowedit)?"block":"none";
+			document.getElementById("retrievebutton").style.display = (allowretrieve)?"block":"none";
+			document.getElementById("pagetext").style.display = (longtext)?"inline":"none";
+			document.getElementById("notasks").style.display = (!allowedit && !allowretrieve)?"inline":"none";
+			if (siteroot) publiclink.href = "http://<?=$_SERVER["HTTP_HOST"]?>/"+siteroot+"/" + tag;
+			else publiclink.href = "http://<?=$_SERVER["HTTP_HOST"]?>/";
+			document.getElementById("editlink").href = "edit?id=" + versionid + "&type=draft";
+			document.getElementById("retrievelink").href = "tasks?action=retrieve&id=" + versionid;
+		}
+		doubleClickTime = currentTime.getTime();
+	}
+	</script>
+<?php
+
+// Load drafts sent to this user to review
+$result = $db->query("SELECT out_versions.id, webroot, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, comment, cfg_adminusers2.name AS draftsender, cfg_adminusers.name AS author, type, tag FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN cfg_adminusers AS cfg_adminusers2 ON out_actionlog.user=cfg_adminusers2.htaccessuser LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser='".$authuser."' AND authoruser!='".$authuser."' ORDER BY datecreated ASC");
+if (mysql_num_rows($result)) {
+	?>
+	<h4>Drafts Sent To Me For Review</h4>
+	<table class="data" style="border-collapse: collapse; width: 100%; cursor: default;">
+		<thead><tr><td>&nbsp;</td><td>Title</td><td>Draft Author</td><td>Sent By</td><td>Sent</td><td>Type</td></tr></thead>
+		<?php
+		while ($row = $db->fetchrow($result)) {
+			$rowNumber++;
+			echo ("<tr id=\"tr".$row["id"]."\" onclick=\"selectrow('".$row["id"]."', true, false, '".$row["title"]."', '".ucfirst($row["type"])." draft by ".$row["author"]."', '".$row["created"]."', '".$row["tag"]."', '<strong>Draft sent by ".$row["draftsender"]." with ".(($row["comment"])?"the comment:</strong><br />".addslashes($row["comment"]):"no comment.")."', '".$row["webroot"]."')\">");
+			echo ("<td style=\"width: 25px;\"><img src=\"/lib/inc/loadcore/web/admin/v2/img/icons/icon16_".$row["type"]."hidden.gif\"></td>");
+			echo ("<td>".$row["title"]."</td>");
+			echo ("<td>".$row["author"]."</td>");
+			echo ("<td>".$row["draftsender"]."</td>");
+			echo ("<td>".$row["created"]."</td>");
+			echo ("<td>".ucfirst($row["type"])."</td>");
+		}
+		?>
+	</table>
+	<br /><br />
+	<?php
+	$tasks = true;
+}
+
+// Load drafts returned to this user
+$result = $db->query("SELECT out_versions.id, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, comment, out_actionlog.user, cfg_adminusers2.name AS draftreturner, authoruser, cfg_adminusers.name AS author, draftusers.name AS draftuser, type, tag, webroot FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN cfg_adminusers AS draftusers ON out_versions.draftuser=draftusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN cfg_adminusers AS cfg_adminusers2 ON out_actionlog.user=cfg_adminusers2.htaccessuser LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser='".$authuser."' AND out_actionlog.actiontype='return draft' ORDER BY datecreated ASC");
+if (mysql_num_rows($result)) {
+	?>
+	<h4>Drafts Returned To Me</h4>
+	<table class="data" style="border-collapse: collapse; width: 100%; cursor: default;">
+		<thead><tr><td>&nbsp;</td><td>Title</td><td>Author</td><td>Returned By</td><td>Sent</td><td>Type</td></tr></thead>
+		<?php
+		while ($row = $db->fetchrow($result)) {
+			$rowNumber++;
+			echo ("<tr id=\"tr".$row["id"]."\" onclick=\"selectrow('".$row["id"]."', true, false, '".$row["title"]."', '".ucfirst($row["type"])." draft by ".$row["author"]."', '".$row["created"]."', '".$row["tag"]."', '<strong>Draft returned by ".$row["draftreturner"]." with ".(($row["comment"])?"the comment:</strong><br />".addslashes($row["comment"]):"no comment.")."', '".$row["webroot"]."');\">");
+			echo ("<td style=\"width: 25px;\"><img src=\"/lib/inc/loadcore/web/admin/v2/img/icons/icon16_".$row["type"]."hidden.gif\"></td>");
+			echo ("<td>".$row["title"]."</td>");
+			echo ("<td>".(($row["authoruser"] == $authuser)?"Me":$row["author"])."</td>");
+			echo ("<td>".$row["draftreturner"]."</td>");
+			echo ("<td>".$row["created"]."</td>");
+			echo ("<td>".ucfirst($row["type"])."</td>");
+		}
+		?>
+	</table>
+	<br /><br />
+	<?php
+	$tasks = true;
+}
+
+// Load drafts saved by this user
+$result = $db->query("SELECT out_versions.id, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, cfg_adminusers.name AS author, type, tag, webroot FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser='".$authuser."' AND authoruser='".$authuser."' AND ((out_actionlog.actiontype != 'send for review' AND out_actionlog.actiontype != 'return draft') OR out_actionlog.actiontype IS NULL) ORDER BY datecreated ASC");
+if (mysql_num_rows($result)) {
+	?>
+	<h4>Drafts I've Saved</h4>
+	<table class="data" style="border-collapse: collapse; width: 100%; cursor: default;">
+		<thead><tr><td>&nbsp;</td><td>Title</td><td>Last Modified</td><td>Type</td></tr></thead>
+		<?php
+		while ($row = $db->fetchrow($result)) {
+			$rowNumber++;
+			echo ("<tr id=\"tr".$row["id"]."\" onclick=\"selectrow('".$row["id"]."', true, false, '".$row["title"]."', '".ucfirst($row["type"])." draft by ".$row["author"]."', '".$row["created"]."', '".$row["tag"]."', false, '".$row["webroot"]."');\">");
+			echo ("<td style=\"width: 25px;\"><img src=\"/lib/inc/loadcore/web/admin/v2/img/icons/icon16_".$row["type"]."hidden.gif\"></td>");
+			echo ("<td>".$row["title"]."</td>");
+			echo ("<td>".$row["created"]."</td>");
+			echo ("<td>".ucfirst($row["type"])."</td>");
+		}
+		?>
+	</table>
+	<br /><br />
+	<?php
+	$tasks = true;
+}
+
+// Load drafts sent by this user
+$result = $db->query("SELECT out_versions.id, title, DATE_FORMAT(datecreated, '".$dateFormat." ".$timeFormat."') as created, comment, out_actionlog.user, cfg_adminusers2.name AS draftsender, cfg_adminusers.name AS author, draftusers.name AS draftuser, type, tag, webroot FROM out_items LEFT JOIN out_localcontent ON out_items.id=out_localcontent.itemid LEFT JOIN out_versions ON out_localcontent.id=out_versions.localcontentid LEFT JOIN cfg_adminusers ON out_versions.authoruser=cfg_adminusers.htaccessuser LEFT JOIN cfg_adminusers AS draftusers ON out_versions.draftuser=draftusers.htaccessuser LEFT JOIN out_actionlog ON out_versions.id=out_actionlog.versionid AND out_versions.datecreated=out_actionlog.date LEFT JOIN cfg_adminusers AS cfg_adminusers2 ON out_actionlog.user=cfg_adminusers2.htaccessuser LEFT JOIN out_sites ON out_items.siteid=out_sites.id WHERE draftuser!='".$authuser."' AND authoruser='".$authuser."' ORDER BY datecreated ASC");
+if (mysql_num_rows($result)) {
+	?>
+	<h4>Drafts Sent For Review</h4>
+	<table class="data" style="border-collapse: collapse; width: 100%; cursor: default;">
+		<thead><tr><td>&nbsp;</td><td>Title</td><td>Sent From</td><td>Sent To</td><td>Sent</td><td>Type</td></tr></thead>
+		<?php
+		while ($row = $db->fetchrow($result)) {
+			$rowNumber++;
+			echo ("<tr id=\"tr".$row["id"]."\" onclick=\"selectrow('".$row["id"]."', false, ".(($row["user"] == $authuser)?"true":"false").", '".$row["title"]."', '".ucfirst($row["type"])." draft by ".$row["author"]."', '".$row["created"]."', '".$row["tag"]."', '".(($row["user"] == $authuser)?"<strong>Draft sent to ".$row["draftuser"]." with ".(($row["comment"])?"the comment:</strong><br />".addslashes($row["comment"]):"no comment."):"This draft has been forwarded from ".$row["draftsender"]." to ".$row["draftuser"]." for further review.")."', '".$row["webroot"]."');\">");
+			echo ("<td style=\"width: 25px;\"><img src=\"/lib/inc/loadcore/web/admin/v2/img/icons/icon16_".$row["type"]."hidden.gif\"></td>");
+			echo ("<td>".$row["title"]."</td>");
+			echo ("<td>".(($row["user"] == $authuser)?"Me":$row["draftsender"])."</td>");
+			echo ("<td>".$row["draftuser"]."</td>");
+			echo ("<td>".$row["created"]."</td>");
+			echo ("<td>".ucfirst($row["type"])."</td>");
+		}
+		?>
+	</table>
+	<?php
+	$tasks = true;
+}
+
+if (!$tasks) echo("<br /><br /><div style=\"text-align: center;\"><em>You currently have no tasks.</em></div>");
+?>
+</td>
+<td class="rightpanel" style="font-size: 75%; line-height: 120%;">
+<form method="get" action="edit.php" name="form1">
+<span id="noneselected"<?=(($tasks)?"":" style=\"display: none;\"")?>><br />
+<img src="/lib/inc/loadcore/web/admin/v2/img/icons/info16.gif" style="float: left; margin: 5px 10px 0 0;">Please select a task to see the available actions.</span>
+<span id="pagedetails" style="display: none;">
+<h3>Draft Details</h3>
+<strong id="pagetitle"></strong><br />
+<span id="pageauth"></span><br />
+<span id="pagemod"></span><br /><br />
+<span id="pagetext"></span><br /><br /><br />
+</span>
+<span id="pagetasks" style="margin: 0; padding: 0; display: none;">
+<h3>Draft Tasks</h3>
+<span id="editbutton"><a href="#" accesskey="e" id="editlink"><span style="text-decoration: underline">E</span>dit Draft</a></span>
+<span id="retrievebutton"><a href="#" accesskey="r" id="retrievelink"><span style="text-decoration: underline">R</span>etrieve Draft</a></span>
+<span id="notasks" style="display: none;">There are no actions available to you for this draft.</span>
+<br /><br /><br />
+</span>
+</form>
+</td>
+<?php
+htm_footer();
+?>

@@ -1,0 +1,84 @@
+<phpunit
+	colors="true"
+	convertErrorsToExceptions="true"
+	convertNoticesToExceptions="true"
+	convertWarningsToExceptions="true"
+	processIsolation="false"
+	stopOnError="false"
+	stopOnFailure="false"
+	stopOnIncomplete="false"
+	stopOnSkipped="false"
+	syntaxCheck="true"
+	strict="false"
+	verbose="true">
+
+	<logging>
+		<log type="junit" target="../build/logs/results.xml" />
+		<log type="coverage-clover" target="../build/logs/coverage/clover.xml" />
+		<log type="coverage-html" target="../build/logs/coverage/" charset="UTF-8" />
+		<log type="testdox-text" target="../build/logs/testdox.txt" />
+		<log type="testdox-html" target="../build/logs/testdox.html" />
+	</logging>
+	<php>
+		<includePath>.</includePath>
+		<ini name="memory_limit" value="512M" />
+		<ini name="error_log" value="../build/logs/error.log" />
+		<server name="IS_DEV" value="1"/>
+	</php>
+	<testsuites>
+
+		<testsuite name="Common Class Tests">
+			<file>helpers/common/v3/convertHumanTimeTest</file>
+		</testsuite>
+
+		<testsuite name="Daemon Tests">
+			<file>helpers/daemon/v2/daemonv2Test</file>
+		</testsuite>
+
+		<testsuite name="Error Handler v5 Tests">
+			<file>helpers/errorhandler/v5/ErrorHandlerv5TestSuite</file>
+		</testsuite>
+
+		<testsuite name="HTTP Request Tests">
+			<file>helpers/http/HTTPRequestTestSuite</file>
+		</testsuite>
+
+		<testsuite name="Logger v1 Tests">
+			<file>helpers/logger/v1/Loggerv1TestSuite</file>
+		</testsuite>
+
+		<testsuite name="Mail v1 Tests">
+			<file>helpers/mail/v1/Mailv1TestSuite</file>
+		</testsuite>
+
+		<testsuite name="Beanstalk v2 Test Suite">
+			<file>helpers/messaging/beanstalk/v2/Beanstalkv2TestSuite</file>
+		</testsuite>
+
+		<testsuite name="orm v2 Test Suite">
+			<file>helpers/orm/v2/Ormv2TestSuite</file>
+		</testsuite>
+
+		<testsuite name="Template Manager v4 Test Suite">
+			<file>helpers/templatemanager/v4/TemplateManagerv4TestSuite</file>
+		</testsuite>
+
+		<testsuite name="Template Manager v5 Test Suite">
+			<file>helpers/templatemanager/v5/TemplateManagerv5TestSuite</file>
+		</testsuite>
+
+		<testsuite name="Validator v2 Test Suite">
+			<file>helpers/validator/v2/Validatorv2TestSuite</file>
+		</testsuite>
+
+		<testsuite name="Memcacheaccess v1">
+			<file>helpers/memcache/v1/timeout</file>
+		</testsuite>
+
+	</testsuites>
+	<filter>
+		<blacklist>
+	    	<directory>/usr/share/pear</directory>
+		</blacklist>
+	</filter>
+</phpunit>

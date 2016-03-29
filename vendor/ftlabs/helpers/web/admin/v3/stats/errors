@@ -1,0 +1,183 @@
+<?php
+/*
+########################################################
+Stats page for search engine referrals
+
+04/11/2004
+Andrew Betts
+Assanka Ltd
+########################################################
+*/
+
+require_once("statslib");
+
+if ($statsLevels[$authuserstats] < $statsLevels["sbe"]) {
+	include("premiumguide/guide");
+	exit;
+}
+
+updateFilters("errors");
+$counts = getErrorCodes($_SESSION["filters"]["start"],$_SESSION["filters"]["end"]);
+if (count($counts["hits"])) {
+	$totalhits = array_sum($counts["hits"]);
+} else {
+	$totalhits = 1;
+}
+
+$errorgroups = array(
+	"100s: Informational" => array(
+		"icontag" => "info",
+		"explain" => "The 100 series status codes are rarely seen but are used for provisional responses from the server.  A 100 series response should not be the final response received from the server, and a client should await a regular response even after receiving a 100 series status code.",
+		"100" => "Continue",
+		"101" => "Switching Protocols"),
+	"200s: Successful" => array(
+		"icontag" => "success",
+		"explain" => "Almost all HTTP requests are answered with a 200 series response, normally '200 OK'.  Other codes in the 200 series offer different forms of acknowledgments for fully or partially successful requests.  In these figures the 200 code is not included because it is not usually an error.",
+		"201" => "Created",
+		"202" => "Accepted",
+		"203" => "Non-Authoritative Information",
+		"204" => "No Content",
+		"205" => "Reset Content",
+		"206" => "Partial Content"),
+	"300s: Redirection" => array(
+		"icontag" => "redirect",
+		"explain" => "This class of response instructs the client to take further action in order to complete the request.  Normally the client will do this automatically and the user will subsequently see the page they wanted, which will be delivered along with a 200 series response when the target of the redirection is requested.  Very high figures in this section can be indicative of infinite redirection loops.",
+		"300" => "Multiple Choices",
+		"301" => "Moved Permanently",
+		"302" => "Found",
+		"303" => "See Other",
+		"304" => "Not Modified",
+		"305" => "Use Proxy",
+		"307" => "Temporary Redirect"),
+	"400s: Client Error" => array(
+		"icontag" => "clienterror",
+		"explain" => "A 400 series response indicates a problem with the client's request, not the server's ability to respond to it.  Most 400 series errors are 404s, which simply means that the client has requested a resource which does not exist.",
+		"400" => "Bad Request",
+		"401" => "Unauthorised",
+		"402" => "Payment Required",
+		"403" => "Forbidden",
+		"404" => "Not Found",
+		"405" => "Method Not Allowed",
+		"406" => "Not Acceptable",
+		"407" => "Proxy Authentication Required",
+		"408" => "Request Timeout",
+		"409" => "Conflict",
+		"410" => "Gone",
+		"411" => "Length Required",
+		"412" => "Precondition Failed",
+		"413" => "Request Entity Too Large",
+		"414" => "Request URI Too Long",
+		"415" => "Unsupported Media Type",
+		"416" => "Requested Range Not Satisfiable",
+		"417" => "Expectation Failed"),
+	"500s: Server Error" => array(
+		"icontag" => "srverror",
+		"explain" => "The 500 series indicates that a problem occured when the server attempted to fulfil the request.  This usually indicates a fault or lack of functionality within the server itself, or another server on which it depends.",
+		"500" => "Internal Server Error",
+		"501" => "Not Implemented",
+		"502" => "Bad Gateway",
+		"503" => "Service Unavailable",
+		"504" => "Gateway Timeout",
+		"505" => "HTTP Version Not Supported")
+);
+
+if (sizeof($counts["hits"])) arsort($counts["hits"]);
+
+htm_header();
+?>
+<style type="text/css">
+.group {
+	display: none;
+	margin-top: 3px;
+}
+</style>
+<script>
+var plusimg = new Image();
+plusimg.src = "<?=$_SERVER["CORE_WEB_ALIAS"]?>/imgs/tree/plus.png";
+var minusimg = new Image();
+minusimg.src = "<?=$_SERVER["CORE_WEB_ALIAS"]?>/imgs/tree/minus.png";
+function showhide(edn) {
+	var title = document.getElementById('edntitle'+edn).getElementsByTagName("img");
+	if (title[0].src == minusimg.src) {
+		title[0].src = plusimg.src;
+		var rows = getElementsByClassname('edngrp'+edn);
+		for (var g = 0; g < rows.length; g++) {
+			rows[g].style.display = 'none';
+		}
+	} else {
+		title[0].src = minusimg.src;
+		var rows = getElementsByClassname('edngrp'+edn);
+		for (var g = 0; g < rows.length; g++) {
+			rows[g].style.display = 'block';
+		}
+	}
+}
+</script>
+<td class="centrepanel">
+<div class="graph">
+	<img src="/lib/inc/loadcore<?=(substr($_SERVER["PATH_INFO"], 0, strrpos($_SERVER["PATH_INFO"], "/"))."/graphs/errors")?>" />
+</div>
+<table class="data sortable" id="table1" cellspacing=0>
+	<thead><tr>
+	<td>Type</td>
+	<td>Hits</td>
+	<td>Percent</td>
+	</tr></thead>
+	<?php
+	foreach($errorgroups as $name=>$editions) {
+		$editiontotal = 0;
+		$numeditions = 0;
+		$opnames = "";
+		$ophits = "";
+		$oppercent = "";
+		foreach ($editions as $tag=>$ename) {
+			if ($tag != "explain" and $tag != "icontag") {
+				if ($counts["hits"][$tag]) {
+					$opnames .= $ename . "<br>";
+					$ophits .= $counts["hits"][$tag] . "<br>";
+					$oppercent .= number_format(($counts["hits"][$tag]/$totalhits)*100, 1) . "<br>";
+					$editiontotal += $counts["hits"][$tag];
+					$numeditions++;
+				}
+			}
+		}
+		?>
+		<tr>
+		<td><span class="sortbythis"><?=str_pad($name, 25, ".", STR_PAD_RIGHT)?></span>
+		<div id="edntitle<?=$editions["icontag"]?>" onclick="showhide('<?=$editions["icontag"]?>');" style="padding: 2px 0px 2px 3px; cursor: pointer">
+		<img src="<?=$_SERVER["CORE_WEB_ALIAS"]?>/imgs/tree/plus.png" style="width: 9px; height: 9px; margin-right: 8px;">
+		<B><?=$name?></B>
+		<div class="edngrp<?=$editions["icontag"]?> group" style="margin-left: 45px"><?=$opnames?></div>
+		</div>
+		</td>
+		<td><span class="sortbythis"><?=str_pad($editiontotal, 4, "0", STR_PAD_LEFT)?></span><B><?=$editiontotal?></B><div class="edngrp<?=$editions["icontag"]?> group"><?=$ophits?></div></td>
+		<td><span class="sortbythis"><?=($editiontotal)?str_pad(number_format(($editiontotal/$totalhits)*100, 1), 4, "0", STR_PAD_LEFT):"0"?></span><B><?=($editiontotal)?number_format(($editiontotal/$totalhits)*100, 1):"0"?></B><div class="edngrp<?=$editions["icontag"]?> group"><?=$oppercent?></div></td>
+		</tr>
+		<?=$op?>
+		<?php
+	}
+	
+	?>
+</table>
+<script type="text/javascript">
+var st = new SortableTable(document.getElementById("table1"), ["String", "String", "String"]);
+</script>
+</td>
+<td class="rightpanel">
+<form action="errors" method="post" style="margin-bottom: 20px">
+<input type="hidden" name="action" value="setfilters">
+<h3>Apply Filters</h3>
+<div class="field"><label for="start"><u>S</u>tart date:</label><input type="text" name="fil_start" id="start" accesskey="s" value="<?=$_SESSION["filters"]["start"]?>"></div>
+<div class="field"><label for="end"><u>E</u>nd date (mm/yy):</label><input type="text" name="fil_end" id="end" accesskey="e" value="<?=$_SESSION["filters"]["end"]?>"></div>
+<input type="submit" value="Update">
+</form>
+<h3>Information</h3>
+The response code is a three digit number sent by the server to the client in response to every request.  The code indicates what the server did with the request, and is a basic statement of whether the client got what it wanted.  The response code is given in a header, followed by the actual page data which the client (browser) displays.
+<p>
+By examining the number of each response code you can get an idea of the number of visitors who are not getting a satisfactory response to their requests, and try to take action in each case to reduce the instance of that error.  For the most common error, 404 Not Found, see also <a href="404s">404 Errors</a> itemised.
+<p>
+This data is for the period <b><?php echo Common::localdate(getStatsStartDate($_SESSION["filters"]["start"])); ?></b> to <b><?php echo Common::localdate(getStatsEndDate($_SESSION["filters"]["end"])); ?></b>.
+</td>
+<?php
+htm_footer(); 
+?>

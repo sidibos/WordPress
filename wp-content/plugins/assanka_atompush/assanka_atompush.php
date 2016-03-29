@@ -9,8 +9,8 @@ Author Email: support@assanka.net
 Author URI:
 */
 
-//use FTBlogs\AtomPush\Message;
-//require_once __DIR__ . '/classes/Message.php';
+use FTBlogs\AtomPush\Message;
+require_once __DIR__ . '/classes/Message.php';
 
 class Assanka_Atompush {
 	private $logger;

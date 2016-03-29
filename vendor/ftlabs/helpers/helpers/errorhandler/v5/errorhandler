@@ -1,0 +1,186 @@
+<?php
+/**
+ * Obsolete. Please use FTLabs\Logger instead
+ *
+ * @codingstandard ftlabs-phpcs
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Some projects don't initialize Composer autoloader before using legacy files
+// And core-legacy isn't an expicit dependency of projects that use it,
+// so project's standard autoloader may not have Logger available. Therefore it's
+// neccessary to fallback to Core's own autoloader:
+
+if (!class_exists('FTLabs\Logger') && defined('PROJROOT') && file_exists(PROJROOT . "/vendor/autoload.php")) {
+	include_once PROJROOT . "/vendor/autoload.php";
+}
+if (!class_exists('FTLabs\Logger') && file_exists(__DIR__ . "/../../../vendor/autoload.php")) {
+	include_once __DIR__ . "/../../../vendor/autoload.php";
+}
+if (!class_exists('FTLabs\Logger')) {
+	throw new Exception("Unable to find FTLabs\Logger. Please add Logger to composer.json and include 'vendor/autoload.php' or stop using ErrorHandlerV5 class");
+}
+
+if (!class_exists('AssankaException')) {
+	require_once 'exception';
+}
+
+if (!is_callable(array('\FTLabs\Logger','init'))) {
+	$loggerClass = new ReflectionClass('\FTLabs\Logger');
+	throw new Exception("The project has included old, incompatible version of FTLabs\Logger. Please delete old {$loggerClass->getFileName()} and include Logger version 1.16 or later");
+}
+
+class ErrorHandlerV5 {
+	const PAGE_TYPE_HTML = 1, PAGE_TYPE_TEXT = 0;
+
+	private static $logger;
+
+	/**
+	 * @deprecated
+	 */
+	public static function init() {
+		self::getLogger();
+	}
+
+	private static function getLogger() {
+		if (!self::$logger) {
+			self::$logger = \FTLabs\Logger::init();
+			self::$logger->setInstanceVariables(array("initialized_from" => __CLASS__));
+		}
+		return self::$logger;
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function useDefaultActionTriggers() {
+	}
+
+	public static function reportException($ex, $level=E_ERROR) {
+		// Logger increases severity of notices to error, but old code relies on notices being ignored
+		if ($level == E_USER_NOTICE || $level == E_NOTICE) {
+			$severity = \Psr\Log\LogLevel::INFO;
+		} else {
+			$severity = FTLabs\Logger::severityForPhpError($level);
+		}
+		self::getLogger()->logException($ex, $severity);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function abbreviate(&$data, $level=0, $isglobals=false, $inspectarrays=true) {
+		trigger_error("Deprecated", E_USER_DEPRECATED);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function reportError($errno, $errstr, $errfile, $errline, $context=array()) {
+		self::getLogger()->_phpErrorHandlerCallback($errno, $errstr, $errfile, $errline, $context);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function generateTree($dumparr, $level=0) {
+		trigger_error("Deprecated", E_USER_DEPRECATED);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function errorReportPage($data, $pagetype=self::PAGE_TYPE_HTML, $devmode=true) {
+		trigger_error("Deprecated", E_USER_DEPRECATED);
+	}
+
+	public static function setReportPageType($type) {
+		self::getLogger()->setOutputType($type === self::PAGE_TYPE_TEXT ? FTLabs\Logger::PAGE_TYPE_TEXT : FTLabs\Logger::PAGE_TYPE_HTML);
+		return true;
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function setLogFileDir($dir) {
+		return false;
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function setDevMode($mode=true) {
+		trigger_error("Deprecated", E_USER_DEPRECATED);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function isDevMode() {
+		return !empty($_SERVER["IS_DEV"]) || !empty($_SERVER["IS_CI"]);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function setSummaryFilename($filename) {
+		return false;
+	}
+
+	/**
+	 * Don't use this function. Use Logger->setHandlerMinSeverity() instead.
+	 *
+	 * Purpose of this function was to silence error reporting in order to run broken code.
+	 * Sets error reporting to the given level if action is different from 'log'
+	 *
+	 * @deprecated
+	 */
+	public static function setActionTriggers($action, $levels) {
+		if ($action !== 'log') {
+			error_reporting($levels);
+		}
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function addActionTrigger($action, $level) {
+		if ($action !== 'log') {
+			error_reporting(error_reporting() | $level);
+		}
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function removeActionTrigger($action, $level) {
+		if ($action !== 'log') {
+			error_reporting(error_reporting() & ~$level);
+		} else {
+			self::getLogger()->setHandlerMinSeverity($action, Psr\Log\LogLevel::CRITICAL);
+		}
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function getActionTriggerState($action, $level) {
+		if ($action !== 'log') {
+			return error_reporting() & $level;
+		}
+		return false;
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function setTemplate($type, $path) {
+		return false;
+	}
+
+	public static function getLastError() {
+		trigger_error("Deprecated", E_USER_DEPRECATED);
+	}
+}
+
+if (!class_exists('ErrorHandler')) class_alias('ErrorHandlerV5', 'ErrorHandler');

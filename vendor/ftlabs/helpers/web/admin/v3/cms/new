@@ -1,0 +1,188 @@
+<?php
+/**
+ * Collects information required to create a new page. This script
+ * does not collect the content of the page, just the metadata,
+ * which it uses to create the page. The administrator can then edit
+ * it to add the content.
+ *
+ * Accepted Inputs: none
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once("cmslib");
+if (!session_id()) session_start();
+
+// Config **todo** - get and set the site and language
+$siteid = (($_SESSION["outlinesiteid"])?$_SESSION["outlinesiteid"]:"1");
+$languageisocode = "en";
+
+// Save the location of parent page, if any, for redisplay of index.  But
+// ignore homepage entries, as the homepage is special...
+if ($_GET["tag"] == "homepage") $_GET["tag"] = "";
+if ($_GET["tag"]) saveLastSelectedPage($_GET["tag"]);
+
+// Check how many sites there are, and pull out the name of the current site
+// if there's several
+$siteName = false;
+$result = $db->query("SELECT id, name FROM out_sites");
+if ($db->numresults($result) > 1) {
+	while ($theRow = $db->fetchrow($result)) {
+		if (($_POST and ($theRow["id"] == $_POST["siteid"])) or (!$_POST and ($theRow["id"] == $_SESSION["outlinesiteid"]))) $siteName = $theRow["name"];
+	}
+}
+
+// Import some CSS and javascript
+$page->addContent("content", "<style type=\"text/css\">@import url(\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/css/outline\");</style>");
+$page->addContent("content", "<script type=\"text/javascript\" src=\"".$_SERVER["CORE_WEB_ALIAS"]."/admin/v3/js/outline\"></script>");
+
+// Construct the form with submitted or inputted data
+$form = new inputform("newpage", "POST", "new");
+
+$group1 = new simplefieldgroup(&$form);
+
+// Add the content displaying the template selection
+$templatehtml = "<table class=\"oltemplates\">";
+$layouts = $db->query("SELECT id, name, description FROM out_layouts");
+
+// Outline extension: use a different layout query
+$extendarray = array(&$layouts);
+extendCMS("newPageGotLayouts",$extendarray);
+
+$oddcol = true;
+while ($row = $db->fetchrow($layouts)) {
+	
+	// Outline extension: provide altered HTML for the layout row
+	$extendarray = array(&$oddcol,&$templatehtml,&$row);
+	$result = extendCMS("startGenerateLayoutHTML",$extendarray);
+	if (is_bool($result) and $result) continue;
+
+	// Normal HTML for layout row (i.e. no extension)
+	if ($oddcol) $templatehtml .= "<tr>";
+	$templatehtml .= "<td><input type=\"radio\" id=\"radio".$row["id"]."\" name=\"layout\" value=\"".$row["id"]."\"".(($_POST["layout"] == $row["id"])?" checked=\"checked\"":"")."></td>";
+	$templatehtml .= "<td><label for=\"radio".$row["id"]."\"><img src=\"".$_SERVER["CORE_WEB_ALIAS"]."/imgs/layout/layouts/".$row["id"].".png\" width=\"72\" height=\"54\" border=0></label></td>";
+	$templatehtml .= "<td style=\"width: 40%\"><label for=\"radio".$row["id"]."\"><strong>".$row["name"]."</strong><br>".$row["description"]."</label></td>";
+	if (!$oddcol) $templatehtml .= "</tr>";
+	$oddcol = !$oddcol;
+}
+$templatehtml .= (($oddcol)?"":"<td colspan=\"3\">&nbsp;</td></tr>")."</table>";
+
+$group1->addContent($templatehtml);
+
+$group1->addText("title", "Title", "t", true, false, 150);
+	
+// TODO:RB:20070724: This should really be done by a) making field groups editable once they're created, and b) passing the field group by reference to a CMS-altering function.  But FELE requires now, so...
+if (!$cmsExtend["tagMaxLength"]) $cmsExtend["tagMaxLength"] = 30;
+if (!$cmsExtend["tagValidationRegex"]) $cmsExtend["tagValidationRegex"] = "/^[a-z0-9\-]+$/";
+$group1->addText("tag", "Tag", "a", true, $cmsExtend["tagValidationRegex"], $cmsExtend["tagMaxLength"]);
+$group1->addText("parenttagvis", "Section", false, false, false, 250);
+$group1->addHidden("parenttag");
+if ($siteName) $group1->addText("sitename", "Site", false, false, false, 200);
+$group1->addHidden("isolanguage", $languageisocode);
+$group1->addHidden("siteid", $siteid);
+
+// Define help text
+$form->addHelptext("title", "Enter a title that describes the page, preferably briefly, so that when presented to the user in a large font size it will not need to wrap.  It is best to stick to fewer than ten words, and even fewer if the title is used in the site navigation.");
+$form->addHelptext("tag", "Enter a page tag which is used to create a URL for the page - the address that must be typed into the browser to load the page.  This must be unique to the page, and should reflect its content, but at the same time be as short as possible.  Avoid any punctuation, spaces, numbers or uppercase characters which will make the link harder to type, and keep the tag lowercase.  'contact', 'findingus', 'whoweare' are all good tags.");
+$form->addHelptext("parenttagvis", "Enter the part of the site this page should be created in, using the \"Browse...\" button and selecting a page or folder.  This page will then be grouped inside the selected folder for the purposes of linking to the page or displaying it in site navigation.");
+
+// Add action buttons
+$page->addAction("submit", "Create", false, "document.frmnewpage.submit()");
+$page->addAction("submit", "Cancel", "index", false);
+
+// Check for submitted information, and check any using the core validation
+if ($_POST) {
+
+	// the visible parent tag isn't submitted, so restore it
+	if ($_POST["parenttag"] and ($_POST["parenttag"] != "/")) $_POST["parenttagvis"] = $_POST["parenttag"]."/";
+	if ($siteName) $_POST["sitename"] = $siteName;
+
+	// if a parent has been specified, check the tag
+	if ($_POST["parenttag"]) {
+		$row = $db->queryRow("SELECT tag, itemid FROM out_localcontent l LEFT JOIN out_items i ON l.itemid=i.id WHERE tag='".$db->sqlenc($_POST["parenttag"])."' AND languageisocode='".$db->sqlenc($_POST["isolanguage"])."' AND siteid='".$db->sqlenc($_POST["siteid"])."'");
+		if (!$row) trigger_error("Error checking tag from parent page", E_USER_ERROR);
+		$tag = $row["tag"]."/".$_POST["tag"];
+		$parentid = $row["itemid"];
+	} else {
+		$tag = $_POST["tag"];
+		$parentid = "0";
+	}
+	
+	// With the tag constructed, check the user has permission to create the item in that location
+	if (!cmsCheckIfAuth("createpage", $tag, $_SESSION["outlineadmin"], false, $_POST["siteid"])) $group1->makeInputInvalid("parenttagvis", "You do not have permission to create a page in the folder selected.");
+	
+	// Check that tag is not already in use on this site
+	if ($db->querySingle("SELECT l.id FROM out_items i LEFT JOIN out_localcontent l ON i.id=l.itemid WHERE l.tag='".$db->sqlenc($tag)."' AND i.siteid='".$db->sqlenc($_POST["siteid"])."' AND l.languageisocode='".$db->sqlenc($_POST["isolanguage"])."'")) {
+		$group1->makeInputInvalid("tag", "The tag name you gave is already in use for a page in this section and site - you need to specify a unique tag for each page in any given section so that every page has a different URL.");
+	}
+
+	$group1->addData($_POST);
+	
+	if ($group1->inputValid()) {
+
+		// Save the location of this page for redisplay of index
+		saveLastSelectedPage($tag);
+		
+		// Pull out the content layout if a layout was selected
+		if ($_POST["layout"]) $contenthtml = $db->querySingle("SELECT content FROM out_layouts WHERE id='".$db->sqlenc($_POST["layout"])."'");
+	
+		// If the account has draft privileges, create the new version as a draft -
+		// the advantage of this is it's not visible until published.  Without
+		// draft functionality, the default page gets created as-is.
+		if (cmsIsFunctionalityEnabled("drafts")) {
+			$db->query("INSERT INTO out_items SET siteid='".$db->sqlenc($_POST["siteid"])."', parentid=".$parentid.", type='page', sortindex=1, visibility='visible'");
+			$db->query("INSERT INTO out_localcontent SET itemid=".mysql_insert_id().", languageisocode='".$_POST["isolanguage"]."', tag='".$db->sqlenc($tag)."', isuptodate=1");
+			$localContentID = mysql_insert_id();
+			$db->query("INSERT INTO out_versions SET localcontentid=".$localContentID.", authoruser='".$_SESSION["outlineadmin"]."', draftuser='".$_SESSION["outlineadmin"]."', versionnumber=0, title='".$db->sqlenc($_POST["title"])."', html='".$db->sqlenc(($contenthtml)?$contenthtml:"")."', datecreated=NOW(), islive=0");
+			$versionID = mysql_insert_id();
+		} else {
+			$db->query("INSERT INTO out_items SET siteid='".$db->sqlenc($_POST["siteid"])."', parentid=".$parentid.", type='page', sortindex=1, visibility='inaccessible'");
+			$db->query("INSERT INTO out_localcontent SET itemid=".mysql_insert_id().", languageisocode='".$_POST["isolanguage"]."', tag='".$db->sqlenc($tag)."', isuptodate=1");
+			$localContentID = mysql_insert_id();
+			$db->query("INSERT INTO out_versions SET localcontentid=".$localContentID.", authoruser='".$_SESSION["outlineadmin"]."', draftuser=NULL, versionnumber=0, title='".$db->sqlenc($_POST["title"])."', html='".$db->sqlenc(($contenthtml)?$contenthtml:"")."', datecreated=NOW(), islive=1");
+			$versionID = mysql_insert_id();
+		}
+
+
+
+		// Outline extension - alter the database, after inserting new page
+		$extendarray = array($_POST,&$localContentID);
+		extendCMS("newPageInsertedIntoDb",$extendarray);
+		
+		if (mysql_affected_rows()) {
+			if (cmsIsFunctionalityEnabled("drafts")) {
+				$page->alert("Page created successfully as a draft.", "done");
+				$db->query("INSERT INTO out_actionlog SET versionid=".$versionID.", user='".$_SESSION["outlineadmin"]."', actiontype='create page', comment='localcontentid ".$localContentID."', date=NOW()");
+				header("Location: edit?id=".$versionID."&type=draft");
+			} else {
+				$page->alert("Page created successfully.", "done");
+				$db->query("INSERT INTO out_actionlog SET versionid=".mysql_insert_id().", user='".$_SESSION["outlineadmin"]."', actiontype='create page', comment='localcontentid ".$localContentID."', date=NOW()");
+				header("Location: edit?id=".$localContentID);
+			}
+			exit;
+		} else {
+			trigger_error("Unexpected result", E_USER_ERROR);
+		}
+	} else {
+		$group1->addToForm(true);
+		
+		// Add an error message
+		$page->alert("You did not complete the form correctly.  Please review the fields marked below, and ensure you have read the help text available in the panel on the right.", "error");
+	}
+} else {
+	// Add some default data
+	$group1->addData(array("parenttagvis"=>(($_GET["tag"])?$_GET["tag"]."/":""), "parenttag"=>$_GET["tag"], "sitename"=>$siteName));
+	
+	// Add a default informational alert
+	$page->alert("Choose a layout for your new page, and enter some information about it.  If you don't select a layout a blank page will be created.");
+	
+	// Add the fieldgroups to the form
+	$group1->addToform(false);
+}
+
+$page->addContent("content", $form->outputForm());
+$page->addContent("content", "<script type=\"text/javascript\">addLoadEvent(function() {outlineMakeBrowseField(document.getElementById('frmnewpage_parenttagvis'), 'new', document.getElementById('frmnewpage_parenttag'), document.getElementById('frmnewpage_siteid'), '', ''); if (document.getElementById('frmnewpage_sitename')) document.getElementById('frmnewpage_sitename').disabled = true; olhandler = new OutlineHandler('new');});</script>");
+$page->addContent("context", $form->outputContextHelp());
+$page->render();
+?>

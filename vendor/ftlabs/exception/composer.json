@@ -1,0 +1,9 @@
+{
+	"name": "ftlabs/exception",
+	"description": "A namespaced Exception with context support",
+	"autoload": {
+		"psr-0": {
+			"FTLabs": "src/"
+		}
+	}
+}

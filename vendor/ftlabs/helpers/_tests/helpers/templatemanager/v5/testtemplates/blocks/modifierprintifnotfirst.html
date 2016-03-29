@@ -1,0 +1,25 @@
+This is some sample content to check that the "printifnotfirst" block modifier is working correctly.
+
+<!--@BLOCK:singleitem|repeatfor:singleitem-->
+	This is a singly output block.
+	<!--@BLOCK:checknotfirst|ifnotfirst-->This should not be output as it's the only "iteration".<!--@ENDBLOCK:checknotfirst-->
+<!--@ENDBLOCK:singleitem-->
+
+<!--@BLOCK:listblock|repeatfor:listitems-->
+	This is a loop-output block, iteration <!--@value-->.
+	<!--@BLOCK:checknotfirst|ifnotfirst-->
+		This should not be output for the first iteration.
+	<!--@ENDBLOCK:checknotfirst-->
+<!--@ENDBLOCK:listblock-->
+
+<!--@BLOCK:nestouter-->
+	And once more within another block, also using printifnotfirst syntax instead of ifnotfirst:
+	<!--@BLOCK:listblock|repeatfor:listitems-->
+		This is a loop-output block, iteration <!--@value-->.
+		<!--@BLOCK:checknotfirst|printifnotfirst-->
+			This should not be output for the first iteration.
+		<!--@ENDBLOCK:checknotfirst-->
+	<!--@ENDBLOCK:listblock-->
+<!--@ENDBLOCK:nestouter-->
+
+All done.

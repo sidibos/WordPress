@@ -1,0 +1,63 @@
+<?php
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+include ($_SERVER["CORE_PATH"]."web/jpgraph/1.17beta2/jpgraph.php");
+include ($_SERVER["CORE_PATH"]."web/jpgraph/1.17beta2/jpgraph_pie.php");
+include ($_SERVER["CORE_PATH"]."web/jpgraph/1.17beta2/jpgraph_pie3d.php");
+if (substr($_SERVER["PATH_INFO"], 0, 5) == "/web/") include($_SERVER["CORE_PATH"].substr($_SERVER["PATH_INFO"], 1, strrpos($_SERVER["PATH_INFO"], "/")-1)."/../statslib");
+else include ("../statslib");
+
+$counts = getErrorCodes($_SESSION["filters"]["start"],$_SESSION["filters"]["end"]);
+$labels = array("100" => "Continue", "101" => "Switching Protocols", "201" => "Created", "202" => "Accepted", "203" => "Non-Authoritative Information", "204" => "No Content", "205" => "Reset Content", "206" => "Partial Content", "300" => "Multiple Choices", "301" => "Moved Permanently", "302" => "Found", "303" => "See Other", "304" => "Not Modified", "305" => "Use Proxy", "307" => "Temporary Redirect", "400" => "Bad Request", "401" => "Unauthorised", "402" => "Payment Required", "403" => "Forbidden", "404" => "Not Found", "405" => "Method Not Allowed", "406" => "Not Acceptable", "407" => "Proxy Authentication Required", "408" => "Request Timeout", "409" => "Conflict", "410" => "Gone", "411" => "Length Required", "412" => "Precondition Failed", "413" => "Request Entity Too Large", "414" => "Request URI Too Long", "415" => "Unsupported Media Type", "416" => "Requested Range Not Satisfiable", "417" => "Expectation Failed", "500" => "Internal Server Error", "501" => "Not Implemented", "502" => "Bad Gateway", "503" => "Service Unavailable", "504" => "Gateway Timeout", "505" => "HTTP Version Not Supported", "others"=>"Others");
+$data = array();
+
+if (sizeof($counts)) { 
+	arsort($counts["hits"]);
+	$total = array_sum($counts["hits"]);
+	asort($counts["hits"]);
+	$max = end($counts["hits"]);
+	reset($counts["hits"]);
+	foreach($counts["hits"] as $code=>$count) {
+		if ($count > ($max/50)) {
+			$data[$code] = $count;
+		} else {
+			$data["others"] += $count;
+		}
+	}
+} else {
+	$data["others"] = 1;
+}
+$ydata = array_values($data);
+$xdata = array_keys($data);
+
+$explode = array();
+$legend = array();
+foreach($xdata as $label) $legend[] = $labels[$label];
+
+// Create the graph.
+$graph = new PieGraph(650,350,"auto");	
+$graph->title->Set("HTTP Response Codes");
+$graph->title->SetFont(FF_ARIAL, FS_NORMAL, 12);
+$graph->SetFrame(true, "#F0F0F0");
+$graph->SetMarginColor("#F0F0F0");
+$graph->legend->SetFont(FF_ARIAL, FS_NORMAL, 9);
+$graph->legend->SetFillColor("white");
+$graph->legend->SetLineSpacing(10);
+$graph->SetAntiAliasing(true);
+
+$plot = new PiePlot3D($ydata);
+$plot->SetSize(0.5);
+$plot->SetCenter(0.35);
+$plot->SetLegends($legend);
+$plot->SetAngle(60);
+$plot->Explode($explode);
+$plot->SetStartAngle(90);
+$plot->SetTheme("sand");
+$plot->value->SetFont(FF_ARIAL, FS_NORMAL, 9);
+
+// Add the plot to the graph
+$graph->Add($plot);
+
+// Display the graph
+$graph->Stroke();
+?>

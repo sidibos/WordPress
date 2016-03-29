@@ -1,0 +1,15 @@
+This is some sample content to check that the "printifset" modifier is working correctly.
+<!--@BLOCK:checkifset|printifset:braid-->
+This block is output because a variable is set.
+<!--@ENDBLOCK:checkifset-->
+
+<!--@BLOCK:checkifset|ifset:braid-->
+This block is output because a variable is set, using a shorter form of the template syntax.
+<!--@ENDBLOCK:checkifset-->
+
+<!--@BLOCK:nestouter-->
+	<!--@BLOCK:checkifset|printifset:braid-->
+	This block is output because a variable is set, within another block.
+	<!--@ENDBLOCK:checkifset-->
+<!--@ENDBLOCK:nestouter-->
+Ta-da!

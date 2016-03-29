@@ -1,0 +1,49 @@
+<?php
+/**
+ * Creates a new blank asset, and redirects to the edit page to edit
+ * it
+ *
+ * Accepted Inputs: none
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+require_once($_SERVER["DOCUMENT_ROOT"]."/lib/inc/global");
+require_once("cmslib");
+
+cmsCheckIfAuth("createasset", "", "", true);
+
+$authuser = ($_SERVER["PHP_AUTH_USER"])?$_SERVER["PHP_AUTH_USER"]:$_SERVER["REMOTE_USER"];
+
+$asset = "";
+
+// If the account has draft privileges, create the new version as a draft -
+// the advantage of this is it's not visible until published.  Without
+// draft functionality, the default page gets created as-is.
+$db->query("INSERT INTO out_items SET siteid='".$db->sqlenc($siteid)."', parentid=0, type='asset', sortindex=1, visibility='visible'");
+$pageItemID = mysql_insert_id();
+$db->query("INSERT INTO out_localcontent SET itemid=".$pageItemID.", languageisocode='en', tag='', isuptodate=1");
+$localContentID = mysql_insert_id();
+if (cmsIsFunctionalityEnabled("drafts")) {
+	$db->query("INSERT INTO out_versions SET localcontentid=".$localContentID.", authoruser='".$authuser."', draftuser='".$authuser."', versionnumber=0, title='Untitled Asset', html='".$db->sqlenc($asset)."', datecreated=NOW(), islive=0");
+	$page->alert("Asset created successfully as a draft.", "done");
+} else {
+	$db->query("INSERT INTO out_versions SET localcontentid=".$localContentID.", authoruser='".$authuser."', draftuser=NULL, versionnumber=0, title='Untitled Asset', html='".$db->sqlenc($asset)."', datecreated=NOW(), islive=1");
+	$page->alert("Asset created successfully.", "done");
+}
+
+// Forward to edit page after writing action log
+if (mysql_affected_rows()) {
+	$_SESSION["infotype"] = "done";
+	if (cmsIsFunctionalityEnabled("drafts")) {
+		$versionID = mysql_insert_id();
+		$db->query("INSERT INTO out_actionlog SET versionid=".$versionID.", user='".$authuser."', actiontype='create asset', comment='', date=NOW()");
+		header("Location: edit?id=".$versionID."&type=draft");
+	} else {
+		$db->query("INSERT INTO out_actionlog SET versionid=".mysql_insert_id().", user='".$authuser."', actiontype='create asset', comment='', date=NOW()");
+		header("Location: edit?id=".$localContentID);
+	}
+} else {
+	trigger_error("Unexpected result", E_USER_ERROR);
+}
+?>
