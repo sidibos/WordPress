@@ -1,0 +1,27 @@
+<!--@title|prepend:"<h4>",append:"</h4>"-->
+<table class="data" id="<!--@tablename-->">
+<thead>
+<tr>
+<!--@BLOCK:blkhead|repeatfor:coldefs-->
+	<th class="<!--@sortclass--> <!--@columnclass-->" style="<!--@width|prepend:"width: ",append:"px; "--><!--@align|prepend:"text-align: ",append:";"-->">
+	<!--@BLOCK:checker|printiftrue:checkselectall-->
+		<input type="checkbox" class="select-all" />
+	<!--@ENDBLOCK:checker-->
+	<!--@BLOCK:sortlabel1|printiftrue:sortablecol-->
+		<a href="<!--@thisuri-->?s=<!--@colname-->"><!--@label--></a>
+	<!--@ENDBLOCK:sortlabel1-->
+	<!--@BLOCK:sortlabel2|printiffalse:sortablecol-->
+		<!--@label-->
+	<!--@ENDBLOCK:sortlabel2-->
+	</th>
+<!--@ENDBLOCK:blkhead-->
+</tr>
+</thead>
+<tbody>
+<!--@BLOCK:blknodata|printiffalse:bodyrows-->
+	<tr id="<!--@tablename-->_nothingrow"><td colspan="<!--@numcols-->" class="nodata"><em>There is nothing to display here</em></td></tr>
+<!--@ENDBLOCK:blknodata-->
+<!--@bodyrows-->
+</tbody>
+<!--@footer|prepend:"<tfoot>",append:"</tfoot>"-->
+</table>

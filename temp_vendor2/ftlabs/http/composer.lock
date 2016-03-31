@@ -1,0 +1,32 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at http://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file"
+    ],
+    "hash": "a6acf9a5fb2242f5540009042a8aa52d",
+    "packages": [
+        {
+            "name": "ftlabs/exception",
+            "version": "v1.2.1",
+            "source": {
+                "type": "git",
+                "url": "http://git.svc.ft.com:8080/scm/labsmisc/exception.git",
+                "reference": "e8895c6bdf3722bf2fb3f5f307b0b7f707810906"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "FTLabs": "src/"
+                }
+            },
+            "description": "A namespaced Exception with context support",
+            "time": "2014-04-25 15:18:57"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": [],
+    "platform": [],
+    "platform-dev": []
+}

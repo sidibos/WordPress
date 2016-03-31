@@ -1,0 +1,36 @@
+#!/usr/bin/php
+<?php
+/**
+ * Posts an error debug log to the support system
+ *
+ * Command line PHP script that is invoked by the error handler class to send debug logs to the support system.
+ *
+ * @copyright The Financial Times Limited [All Rights Reserved]
+ */
+
+// Reporting host
+$endpoint = "http://errors.labs.ft.com/receivereport";
+
+// Count the number of postreport processes running, don't continue if there's one running already
+// REVIEW:AB: This could be done a bit more intelligently.  the only solution that is worth implementing a change for is one that switches based on something unique to the process, ie the PID.  So if there are 50 running, we need a formula that selects 1 in 10 to continue, and sleeps the rest for 1 second. Then there will be 45 running, whereupon we need to select 1 in 9. So take the number of processes, divide by 5 (number we can handle per second), round to nearest whole number, then do PID % that number, and if the result is zero, proceed.
+$numproc = trim(shell_exec('ps aux |grep -c postreport'));
+if (is_numeric($numproc)) sleep(rand(0,$numproc));
+
+$path = $_SERVER["argv"][1];
+if (!$path || !is_file($path)) {
+	echo "Error report path missing";
+	exit(1);
+}
+
+// Post the file via curl (v to output headers sent and received, s to silence the progress indicator, S to enable error reporting)
+$buffer = shell_exec("curl -vsS -F ".escapeshellarg('debug=<'.$path)." -A 'Logger/1 curl' --max-time 10 ".escapeshellarg($endpoint)." 2>&1");
+
+// Delete the temporary file, rename the posted file, and catch errors
+if (strpos($buffer, "Error report posted successfully") !== false) {
+	if (is_file($path)) @rename($path, $path."-posted");
+	echo "Complete\n";
+} else {
+	error_log("Could not post error report from $path");
+	echo "Failed\n";
+	exit(1);
+}

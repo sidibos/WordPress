@@ -1,0 +1,27 @@
+<html>
+<head>
+<style type='text/css'>
+body { margin:0; padding:0; font-size: 12px; font-family: sans-serif; overflow:hidden; background-color: #f0f0f0 }
+#parinprog { display: none }
+</style>
+<script type='text/javascript'>
+function init() {
+	document.getElementById('hiduploaddest').value = parent.uploaders[location.search.substr(1)].uploaddest;
+	document.getElementById('hiduplid').value = location.search.substr(1);
+}
+function dosubmit() {
+	document.getElementById('frm').style.display='none';
+	document.getElementById('parinprog').style.display='block';
+}
+</script>
+</head>
+<body onload='init()' scroll='no'>
+<form id='frm' enctype='multipart/form-data' method='post' action='/corestatic/swfupload/v2.1/upload.php' onsubmit='dosubmit()'>
+<input type='hidden' name='type' value='legacy' />
+<input id='hiduplid' type='hidden' name='uplid' value='' />
+<input id='hiduploaddest' type='hidden' name='uploaddest' value='' />
+<input type='file' name='newfile' onchange='this.parentNode.submit()' />
+</form>
+<p id='parinprog'>Uploading, please wait</p>
+</body>
+</html>

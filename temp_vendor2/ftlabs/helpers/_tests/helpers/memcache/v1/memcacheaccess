@@ -1,0 +1,26 @@
+<?php
+
+// This isn't yet an automated test, as it's hard to do.  You can add firewall rules to block memcache with:
+
+// sudo iptables -I OUTPUT -p tcp -d memcache-b --dport 11211 -j DROP
+// sudo iptables -I OUTPUT -p tcp -d memcache-a --dport 11211 -j DROP
+
+// then re-enable access with
+
+// sudo iptables -D OUTPUT -p tcp -d memcache-b --dport 11211 -j DROP
+// sudo iptables -D OUTPUT -p tcp -d memcache-a --dport 11211 -j DROP
+
+require $_SERVER['CORE_PATH'] . '/helpers/memcache/v1/memcacheaccess'; 
+$c = 0;
+$t = time();
+while(true) {
+	MemcacheAccess::getMemcache()->get(md5(microtime(true))); 
+	$c++; 
+	if (time() > $t) { 
+		echo $c.' '; 
+		$c = 0; 
+		$t = time(); 
+	}
+}
+
+

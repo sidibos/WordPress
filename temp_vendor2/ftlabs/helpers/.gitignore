@@ -1,0 +1,6 @@
+**/_tests/logs/
+log/errors/*
+log/daemons
+build
+node_modules
+vendor

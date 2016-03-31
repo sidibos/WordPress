@@ -1,0 +1,7 @@
+deploy.revision=ad771eb6a01c65e397ff9b36113d5b2a2563e335
+commit.timestamp=1393844933
+branch.name=v8
+module.name=testing/test
+deploy.version.tag=8.7.2
+deploy.version.major=8
+deploy.version.minor=7
