@@ -1,5 +1,7 @@
 <?php
-return '';
+header('HTTP/1.1 200 OK');
+header('Content-type: text/html');
+die('');
 
 set_error_handler(function($errno, $errstr, $errfile, $errline, $context) {
 	header('HTTP/1.1 500 Internal Error');
