@@ -528,14 +528,15 @@ class Assanka_Webchat {
 
 		// Allow *.ft.com for Access-Control-Allow-Origin.  While this is active vary: origin
 		// must also be set so that any cacheing doesn't cause problems.
-		if (!empty($_SERVER['HTTP_ORIGIN']) && (substr($_SERVER['HTTP_ORIGIN'], -7) === '.ft.com') && strlen($_SERVER['HTTP_ORIGIN']) > 7) {
+		/*if (!empty($_SERVER['HTTP_ORIGIN']) && (substr($_SERVER['HTTP_ORIGIN'], -7) === '.ft.com') && strlen($_SERVER['HTTP_ORIGIN']) > 7) {
 			header('Vary: Origin');
 			header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
 			header('Access-Control-Allow-Credentials: true');
-		}
+		}*/
 
+		header('Vary: Origin');
 		//allow cross domain requests CORS
-		//header('Access-Control-Allow-Origin: *');
+		header('Access-Control-Allow-Origin: *');
 		//header('Access-Control-Allow-Methods: POST, GET, PUT, DELETE');
 		//header('Access-Control-Allow-Headers: X-Requested-With');
 
