@@ -1,9 +1,0 @@
-{
-	"name": "ftlabs/memcache",
-	"description": "Memcached client",
-	"autoload": {
-		"psr-4": {
-			"FTLabs\\": "src/"
-		}
-	}
-}
