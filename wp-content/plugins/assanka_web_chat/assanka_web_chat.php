@@ -536,8 +536,8 @@ class Assanka_Webchat {
 
 		//allow cross domain requests CORS
 		header('Access-Control-Allow-Origin: *');
-		header('Access-Control-Allow-Methods: POST, GET, PUT, DELETE');
-		header('Access-Control-Allow-Headers: X-Requested-With');
+		//header('Access-Control-Allow-Methods: POST, GET, PUT, DELETE');
+		//header('Access-Control-Allow-Headers: X-Requested-With');
 
 		header("Content-Type: application/json");
 		header("Content-Length: ".strlen($op));
