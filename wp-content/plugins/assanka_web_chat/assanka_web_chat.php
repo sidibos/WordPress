@@ -15,6 +15,7 @@ require_once dirname(__FILE__).'/assanka_web_chat_emoticon.php';
 class Assanka_Webchat {
 	public  $current_webchat_brand = false;
 
+    private $loadAV2 		       = true;
 	private $logger                = null;
 	private $notice                = null;
 	private $plugindir             = null;
@@ -1002,7 +1003,7 @@ class Assanka_Webchat {
 		$brandsdir = $this->plugindir."/branding/brands";
 		$brands_to_load = array();
 
-		if (stristr($_SERVER['HTTP_HOST'], 'ftalphaville.ft.com')){
+		if (stristr($_SERVER['HTTP_HOST'], 'ftalphaville.ft.com') || $this->loadAV2){
 			$brands_to_load[] = "marketslive";
 		} else {
 			$brands_to_load[] = "liveblogs";
