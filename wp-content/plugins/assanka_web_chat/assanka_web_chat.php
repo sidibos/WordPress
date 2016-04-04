@@ -535,6 +535,7 @@ class Assanka_Webchat {
 			//header('Access-Control-Allow-Credentials: true');
 		}*/
 
+		header('Vary: Origin');
 		if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 			header('Access-Control-Allow-Origin: *');
 			//this allows preflights headers to work
