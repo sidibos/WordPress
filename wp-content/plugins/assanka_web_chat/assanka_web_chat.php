@@ -547,7 +547,7 @@ class Assanka_Webchat {
 		}
 
 		//allows cookies (or other user credentials) to be included on cross-origin requests
-		header('Access-Control-Allow-Credentials: true');
+		//header('Access-Control-Allow-Credentials: true');
 
 		header("Content-Type: application/json");
 		header("Content-Length: ".strlen($op));
