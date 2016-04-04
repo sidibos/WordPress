@@ -543,7 +543,9 @@ class Assanka_Webchat {
 			header('Access-Control-Allow-Headers: X-Requested-With, Content-Type');
 		}
 		else {
-			header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
+			header('Access-Control-Allow-Origin: http://av2-marketslive-prod.herokuapp.com');
+			header('Access-Control-Allow-Origin: http://av2-wordpress-test.herokuapp.com/');
+
 		}
 
 		//allows cookies (or other user credentials) to be included on cross-origin requests
