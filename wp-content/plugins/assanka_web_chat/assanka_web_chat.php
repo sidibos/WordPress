@@ -334,7 +334,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'editmsg':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$logdata['event'] = 'edit-start';
 				$this->logger->info('', $logdata);
 
