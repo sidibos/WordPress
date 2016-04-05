@@ -879,7 +879,7 @@ class Assanka_Webchat {
 		 */
 
 		// Get a list of all users IDs in the webchat_messages that have messages for this post.
-		$usersWhoWroteMessages = $wpdb->get_col($wpdb->prepare('SELECT DISTINCT (user_id, dateposted_gmt) FROM '.$wpdb->prefix . 'webchat_messages WHERE post_id=%d AND blockedby_user_id IS NULL', $post_id));
+		$usersWhoWroteMessages = $wpdb->get_col($wpdb->prepare('SELECT DISTINCT user_id FROM '.$wpdb->prefix . 'webchat_messages WHERE post_id=%d AND blockedby_user_id IS NULL', $post_id));
 
 		/**
 		 * If a message is being added, and the current WordPress user is not
