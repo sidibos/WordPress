@@ -231,19 +231,19 @@ class Assanka_Webchat {
 
 		switch($_REQUEST['action']) {
 			case 'gettime':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$response = time();
 				break;
 
 			case 'getprivs':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$response = array();
 				$response['isparticipant'] = (!!current_user_can(self::PARTICIPANT_CAPABILITY));
 				$response['channel'] = $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY));
 				break;
 
 			case 'getmeta':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$response['channel'] = $this->getPusherChannel();
 				if ($this->currentPostIsClosed()) {
 					$status = 'closed';
@@ -256,7 +256,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'getconfig':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$response = $this->current_webchat_brand->getJavascriptConfig();
 				break;
 
@@ -278,7 +278,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'catchup':
-				Cacheability::expiresAfter(10);
+				//Cacheability::expiresAfter(10);
 				if (!empty($_REQUEST['format']) && $_REQUEST['format'] == 'json') {
 					$response = array();
 					$channel = $this->getPusherChannel();
@@ -294,7 +294,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'deletemsg':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$logdata['event'] = 'delete-start';
 				$this->logger->info('', $logdata);
 
@@ -321,7 +321,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'editmsg':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$logdata['event'] = 'edit-start';
 				$this->logger->info('', $logdata);
 
@@ -371,7 +371,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'sendmsg':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$logdata['event'] = 'start';
 				$logdata['msg'] = substr($logdata['msg'], 0, 50);
 				$this->logger->info('', $logdata);
@@ -428,7 +428,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'block':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 				$current_user = wp_get_current_user();
 				$current_user->initials = !empty($current_user->initials)?$current_user->initials:$current_user->webchat_initials;
 				$wpdb->query($wpdb->prepare('UPDATE '.$wpdb->prefix.'webchat_messages SET blockedby_user_id=%d WHERE id=%d AND post_id=%d', $current_user->ID, $_POST['id'], get_the_ID()));
@@ -438,7 +438,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'end':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 
 				// Stop here if the session has already been ended
 				if ($this->currentPostIsClosed()) {
@@ -498,7 +498,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'startSession':
-				Cacheability::noCache();
+				//Cacheability::noCache();
 
 				// Check that the session hasn't already started:
 				if (!$this->currentPostIsComingSoon()) {
