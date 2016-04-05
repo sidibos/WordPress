@@ -274,8 +274,8 @@ class Assanka_Webchat {
 				break;
 
 			case 'poll':
-				//Cacheability::setVarnishExpiryTime(10);
-				//Cacheability::setExternalExpiryTime(0);
+				Cacheability::setVarnishExpiryTime(10);
+				Cacheability::setExternalExpiryTime(0);
 				//Cacheability::outputHeaders();
 				if (!empty($_REQUEST['channels'])) {
 					$twominutesago = new DateTime('2 minutes ago', new DateTimeZone('UTC'));
