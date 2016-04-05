@@ -244,19 +244,19 @@ class Assanka_Webchat {
 
 				break;
 			case 'gettime':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$response = time();
 				break;
 
 			case 'getprivs':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$response = array();
 				$response['isparticipant'] = (!!current_user_can(self::PARTICIPANT_CAPABILITY));
 				$response['channel'] = $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY));
 				break;
 
 			case 'getmeta':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$response['channel'] = $this->getPusherChannel();
 				if ($this->currentPostIsClosed()) {
 					$status = 'closed';
@@ -269,7 +269,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'getconfig':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$response = $this->current_webchat_brand->getJavascriptConfig();
 				break;
 
@@ -291,7 +291,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'catchup':
-				//Cacheability::expiresAfter(10);
+				Cacheability::expiresAfter(10);
 				if (!empty($_REQUEST['format']) && $_REQUEST['format'] == 'json') {
 					$response = array();
 					$channel = $this->getPusherChannel();
@@ -307,7 +307,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'deletemsg':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$logdata['event'] = 'delete-start';
 				$this->logger->info('', $logdata);
 
