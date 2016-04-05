@@ -103,6 +103,9 @@ if ( !defined('ABSPATH') )
 if(!isset($_SERVER['CORE_PATH'])) $_SERVER['CORE_PATH'] = $_SERVER['DOCUMENT_ROOT'].'/assanka';
 //set COREFTCO path
 if(!isset($_SERVER['COREFTCO'])) $_SERVER['COREFTCO'] = $_SERVER['DOCUMENT_ROOT'].'/coreftco';
+if(!isset($_SERVER['PUSHER_KEY'])) $_SERVER['PUSHER_KEY'] = '00960339489d6e143949';
+if(!isset($_SERVER['PUSHER_SECRET'])) $_SERVER['PUSHER_SECRET'] = '67d74df9c4408e73494f';
+if(!isset($_SERVER['PUSHER_APPID'])) $_SERVER['PUSHER_APPID'] = 26260;
 
 
 require_once $_SERVER['CORE_PATH']."/helpers/common/v2/common";
