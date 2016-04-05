@@ -233,7 +233,7 @@ class Assanka_Webchat {
 		switch($_REQUEST['action']) {
 			case 'init':
 				$response = array();
-				$response = array_merge($response, ['time'=>time());
+				$response = array_merge($response, ['time'=>time()]);
 				$priv = [
 				      'isparticipant' => (!!current_user_can(self::PARTICIPANT_CAPABILITY)),
 				      'channel'  => $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY))
