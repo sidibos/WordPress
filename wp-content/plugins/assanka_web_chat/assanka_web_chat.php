@@ -29,6 +29,7 @@ class Assanka_Webchat {
 		'getmeta'        => array('requiresparticipant' => false),
 		'getconfig'      => array('requiresparticipant' => false),
 		'getprivs'       => array('requiresparticipant' => false),
+		'init'           => array('requiresparticipant' => false),
 		'gettime'        => array('requiresparticipant' => false),
 		'sendmsg'        => array('requiresparticipant' => true),
 		'editmsg'        => array('requireseditor' => true),
@@ -230,6 +231,17 @@ class Assanka_Webchat {
 		$logdata = array_merge($_GET, $_POST);
 
 		switch($_REQUEST['action']) {
+			case 'init':
+				$response = array();
+				$response = array_merge($response, ['time'=>time());
+				$priv = [
+				      'isparticipant' => (!!current_user_can(self::PARTICIPANT_CAPABILITY)),
+				      'channel'  => $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY))
+				      ];
+				$response = array_merge($response, $priv);
+				$response = array_merge($response, $this->current_webchat_brand->getJavascriptConfig());
+
+				break;
 			case 'gettime':
 				//Cacheability::noCache();
 				$response = time();
@@ -551,7 +563,7 @@ class Assanka_Webchat {
 			header('Access-Control-Allow-Origin: *');
 		}
 
-		
+
 		//allows cookies (or other user credentials) to be included on cross-origin requests
 		header('Access-Control-Allow-Credentials: true');
 
