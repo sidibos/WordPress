@@ -572,6 +572,8 @@ class Assanka_Webchat {
 		header("Content-Length: ".strlen($op));
 		header('Connection: close');
 		echo $op;
+		//ignore the rest for now
+		exit;
 
 		// If there are embargoed events, close the connection and keep the thread alive while the embargo period runs
 		if ($this->embargoed_events) {
