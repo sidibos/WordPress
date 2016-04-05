@@ -261,9 +261,9 @@ class Assanka_Webchat {
 				break;
 
 			case 'poll':
-				Cacheability::setVarnishExpiryTime(10);
-				Cacheability::setExternalExpiryTime(0);
-				Cacheability::outputHeaders();
+				//Cacheability::setVarnishExpiryTime(10);
+				//Cacheability::setExternalExpiryTime(0);
+				//Cacheability::outputHeaders();
 				if (!empty($_REQUEST['channels'])) {
 					$twominutesago = new DateTime('2 minutes ago', new DateTimeZone('UTC'));
 					$channels = explode(',', $_REQUEST['channels']);
@@ -543,10 +543,10 @@ class Assanka_Webchat {
 			header('Access-Control-Allow-Headers: X-Requested-With, Content-Type');
 		}
 
-		if(strlen($_SERVER['HTTP_ORIGIN'])) {
+		if(strlen($_SERVER['HTTP_ORIGIN']) && $_SERVER['REQUEST_METHOD'] !== 'OPTIONS') {
 			header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
 		}
-		else {
+		else if (strlen($_SERVER['HTTP_ORIGIN']) == 0) {
 			header('Access-Control-Allow-Origin: *');
 		}
 
