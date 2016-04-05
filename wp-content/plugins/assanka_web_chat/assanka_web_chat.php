@@ -535,8 +535,8 @@ class Assanka_Webchat {
 			//header('Access-Control-Allow-Credentials: true');
 		}*/
 
-		header('Vary: Origin');
 		if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+			header('Vary: Origin');
 			header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
 			//this allows preflights headers to work
 			header('Access-Control-Allow-Methods: POST, GET, PUT, DELETE');
@@ -544,6 +544,7 @@ class Assanka_Webchat {
 		}
 
 		if(strlen($_SERVER['HTTP_ORIGIN']) && $_SERVER['REQUEST_METHOD'] !== 'OPTIONS') {
+			header('Vary: Origin');
 			header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
 		}
 		else if (strlen($_SERVER['HTTP_ORIGIN']) == 0) {
