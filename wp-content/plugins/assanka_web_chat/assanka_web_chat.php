@@ -548,7 +548,7 @@ class Assanka_Webchat {
 			//header('Access-Control-Allow-Credentials: true');
 		}*/
 
-		if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+		/*if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 			header('Vary: Origin');
 			header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
 			//this allows preflights headers to work
@@ -562,7 +562,13 @@ class Assanka_Webchat {
 		}
 		else if (strlen($_SERVER['HTTP_ORIGIN']) == 0) {
 			header('Access-Control-Allow-Origin: *');
-		}
+		}*/
+
+		header('Vary: Origin');
+		header('Access-Control-Allow-Origin: '.$_SERVER['HTTP_ORIGIN']);
+		//this allows preflights headers to work
+		header('Access-Control-Allow-Methods: POST, GET, PUT, DELETE');
+		header('Access-Control-Allow-Headers: X-Requested-With, Content-Type');
 
 
 		//allows cookies (or other user credentials) to be included on cross-origin requests
