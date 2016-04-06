@@ -316,9 +316,10 @@ class Assanka_Webchat {
 					$direction = ($this->current_webchat_brand->content_order == 'descending') ? 'DESC' : 'ASC';
 					$query = "SELECT event, data FROM ".$wpdb->prefix."webchat_pusher WHERE channel = '" . $channel . "' ORDER BY datepushed_gmt " . $direction;
 					$query = $this->rewrite_sql_to_pgsql($query);
-					$response = $wpdb->get_results($query, ARRAY_A);
+					$response = (array)$wpdb->get_results($query, ARRAY_A);
 
 					foreach ($response as $k=>$row) {
+						$response[$k]['data'] = json_decode($row['data']);
 						$response[$k]['data'] = json_decode($row['data']);
 					}
 
