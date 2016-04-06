@@ -57,6 +57,11 @@ class AssankaLoggerV1 {
 				$filehandle = null;
 				$fileinode = null;
 
+				// create a file on heroku
+				if (!file_exists($filename)) {
+					AssankaCommonV3::createWritable($filename);
+				}
+
 				// HACK:20120530:LB in PHP 5.4 $this will be accessible inside the closure, so no need to use $that
 				$that = $this;
 				$this->_writestring = function($string, $date = null) use ($filename, &$filehandle, &$fileinode, $that) {
