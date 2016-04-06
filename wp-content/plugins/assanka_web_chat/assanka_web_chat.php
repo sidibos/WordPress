@@ -320,12 +320,10 @@ class Assanka_Webchat {
 						$response[$k]['data'] = json_decode($row['data']);
 					}
 
-					$response['res'] = var_dump($res);
-
-					$response['type'] = 'query';
+					$response['res'] = $res;
+					$response['query'] = $query;
 				} else {
 					$response = $this->get_html();
-					$response['type'] = 'html';
 				}
 				break;
 
