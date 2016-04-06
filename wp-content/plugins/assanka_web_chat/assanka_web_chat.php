@@ -314,10 +314,13 @@ class Assanka_Webchat {
 					$channel = $this->getPusherChannel();
 					$direction = ($this->current_webchat_brand->content_order == 'descending') ? 'DESC' : 'ASC';
 					$query = 'SELECT event, data FROM '.$wpdb->prefix.'webchat_pusher WHERE channel = "' . $channel . '" ORDER BY datepushed_gmt ' . $direction;
-					$response = $wpdb->get_results($query, ARRAY_A);
+					$res = $wpdb->get_results($query, ARRAY_A);
+					$response = $res;
 					foreach ($response as $k=>$row) {
 						$response[$k]['data'] = json_decode($row['data']);
 					}
+
+					$response['res'] = var_dump($res);
 
 					$response['type'] = 'query';
 				} else {
