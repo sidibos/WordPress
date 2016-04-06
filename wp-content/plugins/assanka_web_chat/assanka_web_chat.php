@@ -309,23 +309,23 @@ class Assanka_Webchat {
 
 			case 'catchup':
 				Cacheability::expiresAfter(10);
+
 				if (!empty($_REQUEST['format']) && $_REQUEST['format'] == 'json') {
 					$response = array();
 					$channel = $this->getPusherChannel();
 					$direction = ($this->current_webchat_brand->content_order == 'descending') ? 'DESC' : 'ASC';
 					$query = "SELECT event, data FROM ".$wpdb->prefix."webchat_pusher WHERE channel = '" . $channel . "' ORDER BY datepushed_gmt " . $direction;
-					$res = $wpdb->get_results($query, ARRAY_A);
-					$response = $res;
+					$response = $wpdb->get_results($query, ARRAY_A);
+
 					foreach ($response as $k=>$row) {
 						$response[$k]['data'] = json_decode($row['data']);
 					}
 
-					$response['res'] = $res;
-					$response['query'] = $query;
 				} else {
 					$response = $this->get_html();
 				}
-				break;
+				
+			    break;
 
 			case 'deletemsg':
 				Cacheability::noCache();
