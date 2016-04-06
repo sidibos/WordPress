@@ -279,6 +279,7 @@ class Assanka_Webchat {
 				//Cacheability::setVarnishExpiryTime(10);
 				//Cacheability::setExternalExpiryTime(0);
 				//Cacheability::outputHeaders();
+				$response = array();
 				if (!empty($_REQUEST['channels'])) {
 					$twominutesago = new DateTime('2 minutes ago', new DateTimeZone('UTC'));
 					$channels = explode(',', $_REQUEST['channels']);
@@ -290,9 +291,8 @@ class Assanka_Webchat {
 						foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
 					}
 
-				} else {
-					$response = array();
 				}
+
 				break;
 
 			case 'catchup':
