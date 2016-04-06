@@ -315,6 +315,7 @@ class Assanka_Webchat {
 					$channel = $this->getPusherChannel();
 					$direction = ($this->current_webchat_brand->content_order == 'descending') ? 'DESC' : 'ASC';
 					$query = "SELECT event, data FROM ".$wpdb->prefix."webchat_pusher WHERE channel = '" . $channel . "' ORDER BY datepushed_gmt " . $direction;
+					$query = $this->rewrite_sql_to_pgsql($query);
 					$response = $wpdb->get_results($query, ARRAY_A);
 
 					foreach ($response as $k=>$row) {
@@ -324,7 +325,7 @@ class Assanka_Webchat {
 				} else {
 					$response = $this->get_html();
 				}
-				
+
 			    break;
 
 			case 'deletemsg':
@@ -2412,6 +2413,15 @@ class Assanka_Webchat {
 	 */
 	public function getWebchatPagetype() {
 		return $this->webchat_pagetype;
+	}
+
+	private function rewrite_sql_to_pgsql($sql)
+	{
+		if(defined('DB_DRIVER') && DB_DRIVER == 'pgsql') {
+			$sql = pg4wp_rewrite( $sql);
+		}
+
+		return $sql;
 	}
 }
 $assanka_webchat = new Assanka_Webchat();
