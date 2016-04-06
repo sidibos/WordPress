@@ -276,17 +276,20 @@ class Assanka_Webchat {
 				break;
 
 			case 'poll':
-				Cacheability::setVarnishExpiryTime(10);
-				Cacheability::setExternalExpiryTime(0);
+				//Cacheability::setVarnishExpiryTime(10);
+				//Cacheability::setExternalExpiryTime(0);
 				//Cacheability::outputHeaders();
 				if (!empty($_REQUEST['channels'])) {
 					$twominutesago = new DateTime('2 minutes ago', new DateTimeZone('UTC'));
 					$channels = explode(',', $_REQUEST['channels']);
 					$channels = array_map('addslashes', $channels);
-					$channels = join('","', $channels);
-					$qry = 'SELECT channel, event, data FROM '.$wpdb->prefix.'webchat_pusher WHERE channel IN ("'.$channels.'") AND datepushed_gmt > "'.$twominutesago->format('Y-m-d H:i:s');
-					$response = $wpdb->get_results($qry, ARRAY_A);
-					foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
+					if(!empty($channels)) {
+						$channels = join('","', $channels);
+						$qry = 'SELECT channel, event, data FROM '.$wpdb->prefix.'webchat_pusher WHERE channel IN ("'.$channels.'") AND datepushed_gmt > "'.$twominutesago->format('Y-m-d H:i:s');
+						$response = $wpdb->get_results($qry, ARRAY_A);
+						foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
+					}
+
 				} else {
 					$response = array();
 				}
