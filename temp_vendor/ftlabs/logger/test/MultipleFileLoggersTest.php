@@ -7,7 +7,8 @@
  */
 
 class multipleFileLoggersTest extends PHPUnit_Framework_TestCase {
-	const LOG_BASE_PATH = '/var/log/apps/';
+	//const LOG_BASE_PATH = '/var/log/apps/'; changing this for now for heroku
+	const LOG_BASE_PATH = '/var/log/';
 	protected $loggerpaths = array();
 	protected function setUp() {
 	}

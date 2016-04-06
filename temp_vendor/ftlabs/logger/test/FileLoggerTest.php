@@ -8,7 +8,8 @@
 
 
 class FileLoggerTest extends PHPUnit_Framework_TestCase {
-	const LOG_PATH = '/var/log/apps/testlogger.log';
+	//const LOG_PATH = '/var/log/apps/testlogger.log'; changing this for now for heroku
+	const LOG_PATH = '/var/log/testlogger.log';
 	protected $logger;
 
 	protected function setUp() {

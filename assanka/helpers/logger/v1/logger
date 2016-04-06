@@ -14,7 +14,8 @@ class AssankaLoggerV1 {
 	protected $_logname, $_reinitialise, $_writestring, $_writearray, $_instancevars;
 	private $_filehandle;
 
-	private $_logdir = '/var/log/apps';
+	//private $_logdir = '/var/log/apps'; changing this for now for heroku
+	private $_logdir = '/var/log';
 
 	/**
 	 * Creates a new Logger instance

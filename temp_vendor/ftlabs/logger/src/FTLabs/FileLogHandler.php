@@ -20,7 +20,8 @@ class FileLogHandler extends AbstractLogHandler {
 	 */
 	public function __construct($logname, LogFormatterInterface $formatter = null) {
 		$this->formatter = $formatter ? $formatter : new SplunkLogFormatter();
-		$this->logpath = "/var/log/apps/{$logname}.log";
+		//$this->logpath = "/var/log/apps/{$logname}.log"; changing this for now for heroku
+		$this->logpath = "/var/log/{$logname}.log";
 	}
 
 	private function writeString($string) {
