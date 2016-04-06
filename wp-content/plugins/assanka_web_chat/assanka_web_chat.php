@@ -218,6 +218,8 @@ class Assanka_Webchat {
 	private function handle_ajax_requests() {
 		global $wpdb, $post;
 
+		$start_time = time();
+
 		if (!isset($this->possible_ajax_calls[$_REQUEST['action']])) {
 			return;
 		}
@@ -384,7 +386,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'sendmsg':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$logdata['event'] = 'start';
 				$logdata['msg'] = substr($logdata['msg'], 0, 50);
 				$this->logger->info('', $logdata);
@@ -441,7 +443,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'block':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 				$current_user = wp_get_current_user();
 				$current_user->initials = !empty($current_user->initials)?$current_user->initials:$current_user->webchat_initials;
 				$wpdb->query($wpdb->prepare('UPDATE '.$wpdb->prefix.'webchat_messages SET blockedby_user_id=%d WHERE id=%d AND post_id=%d', $current_user->ID, $_POST['id'], get_the_ID()));
@@ -451,7 +453,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'end':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 
 				// Stop here if the session has already been ended
 				if ($this->currentPostIsClosed()) {
@@ -511,7 +513,7 @@ class Assanka_Webchat {
 				break;
 
 			case 'startSession':
-				//Cacheability::noCache();
+				Cacheability::noCache();
 
 				// Check that the session hasn't already started:
 				if (!$this->currentPostIsComingSoon()) {
@@ -534,6 +536,8 @@ class Assanka_Webchat {
 
 		$logdata['event'] = 'ajaxcomplete';
 		$this->logger->info('', $logdata);
+
+		$response['time_latency'] = time() - $start_time;
 
 		// Output response directly to browser as JSON
 		ignore_user_abort(true);
