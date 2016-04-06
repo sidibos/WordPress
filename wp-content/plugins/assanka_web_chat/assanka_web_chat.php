@@ -318,8 +318,11 @@ class Assanka_Webchat {
 					foreach ($response as $k=>$row) {
 						$response[$k]['data'] = json_decode($row['data']);
 					}
+
+					$response['type'] = 'query';
 				} else {
 					$response = $this->get_html();
+					$response['type'] = 'html';
 				}
 				break;
 
