@@ -801,8 +801,6 @@ class Assanka_Webchat {
 			"messagetext"      => $msg,
 			"keytext"		   => $keytext,
 			"messagedata"      => $data,
-			"update_query"     => $this->updateMessageInDB($data),
-			"query_response" => $response
 		);
 	}
 
@@ -838,8 +836,6 @@ class Assanka_Webchat {
 		return array(
 			"pusherresult"     => $pusherresult,
 			"formattedmessage" => $data['html'],
-			"inst_id" 		   => $data['id'],
-			"ins_query"        => $this->getUpdateMessageQuery($data)
 		);
 	}
 
@@ -911,6 +907,7 @@ class Assanka_Webchat {
 			$pubdate = (strlen($data['pubdate']->format('Y-m-d H:i:s')))?$data['pubdate']->format('Y-m-d H:i:s'):NULL;
 			$key_text = wp_strip_all_tags($data['keytext']);
 			$key_text = (strlen($key_text))?$key_text:NULL;
+
 			$fullquery = "INSERT INTO ".$wpdb->prefix."webchat_messages (user_id, post_id, msgtype, msgtext, keyevent, datemodified_gmt, dateposted_gmt)".
 					" VALUES (".$data['user_id'].",".$data['post_id'].",'".$data['msgtype']."','".$data['msgtext']."','".$key_text."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$pubdate."')";
 		} else {
@@ -921,6 +918,7 @@ class Assanka_Webchat {
 			}
 			$fullquery = 'UPDATE '.$basequery.$wpdb->prepare(' WHERE id = %d', $data['id']);
 		}
+
 		$fullquery = $this->rewrite_sql_to_pgsql($fullquery);
 		return $fullquery;
 	}
