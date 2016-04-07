@@ -778,6 +778,7 @@ class Assanka_Webchat {
 			$londontime = new DateTime('now', new DateTimeZone('Europe/London'));
 			$data['msgtext'] = $londontime->format("g:iA");
 		}
+		$response['query_response'] = [];
 		if (!empty($data['msgtype'])) {
 			$logdata['event'] = 'presend-msg';
 			$this->logger->info('', $logdata);
