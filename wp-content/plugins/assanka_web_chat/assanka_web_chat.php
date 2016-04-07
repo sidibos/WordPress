@@ -469,6 +469,8 @@ class Assanka_Webchat {
 					$response['success'] = false;
 					$response['reason'] = $result["message"];
 					$response['request_data'] = $logdata;
+					$response['post_data']    = $_POST;
+					$response['origin_request'] = $_REQUEST;
 					break;
 				}
 				$msg = $result["messagetext"];
