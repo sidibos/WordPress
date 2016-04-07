@@ -12,7 +12,7 @@ class Assanka_WebchatBrand_Marketslive extends Assanka_WebchatBrand {
 	public $default_excerpt            = 'Live markets commentary from FT.com';
 	public $validWordpressThemes       = array('wrapper-alphaville');
 	public $initial_polling_wait_time  = 30;
-	public $poll_interval              = 3;
+	public $poll_interval              = 20;//this was initially 3 s
 	public $requireparticipantinitials = true;
 	public $allowparticipantheadshots  = false;
 	public $allowMessageBylines        = false;
