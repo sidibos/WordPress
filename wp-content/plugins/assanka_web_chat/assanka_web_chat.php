@@ -254,10 +254,15 @@ class Assanka_Webchat {
 				$response = array_merge($response, $priv);
 				$response = array_merge($response, $this->current_webchat_brand->getJavascriptConfig());
 
+				$response['response'] = $response;
+				$response['success']  = true;
+
 				break;
 			case 'gettime':
 				Cacheability::noCache();
 				$response = time();
+				$response['response'] = $response;
+				$response['success']  = true;
 				break;
 
 			case 'getprivs':
@@ -265,6 +270,9 @@ class Assanka_Webchat {
 				$response = array();
 				$response['isparticipant'] = (!!current_user_can(self::PARTICIPANT_CAPABILITY));
 				$response['channel'] = $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY));
+				$response['response'] = $response;
+				$response['success']  = true;
+
 				break;
 
 			case 'getmeta':
@@ -278,11 +286,14 @@ class Assanka_Webchat {
 					$status = 'inprogress';
 				}
 				$response['status'] = $status;
+				$response['response'] = $response;
+				$response['success']  = true;
 				break;
 
 			case 'getconfig':
 				Cacheability::noCache();
-				$response = $this->current_webchat_brand->getJavascriptConfig();
+				$response['response'] = $this->current_webchat_brand->getJavascriptConfig();
+				$response['success']  = true;
 				break;
 
 			case 'poll':
@@ -304,7 +315,9 @@ class Assanka_Webchat {
 							$item['data'] = json_decode($item['data']);
 							return $item;
 						},$response);
-						//foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
+						$response['response'] = $response;
+						$response['success']  = true;
+						
 					}
 
 				}
@@ -326,6 +339,9 @@ class Assanka_Webchat {
 						$item['data'] = json_decode($item['data']);
 						return $item;
 					}, $data_res);
+
+					$response['response'] = $response;
+					$response['success']  = true;
 
 				} else {
 					$response = $this->get_html();
@@ -360,7 +376,7 @@ class Assanka_Webchat {
 				));
 
 				$response['success'] = true;
-				$response['message'] = '';
+				$response['response'] = '';
 				break;
 
 			case 'editmsg':
@@ -413,7 +429,7 @@ class Assanka_Webchat {
 				}
 
 				$response['success'] = true;
-				$response['message'] = $result["formattedmessage"];
+				$response['response'] = $result["formattedmessage"];
 
 				break;
 
@@ -426,7 +442,7 @@ class Assanka_Webchat {
 
 				if ($this->currentPostIsClosed()) {
 					$response['success'] = true;
-					$response['message'] = "The chat has finished.  No more messages can be posted.";
+					$response['response'] = "The chat has finished.  No more messages can be posted.";
 					break;
 				}
 
@@ -441,7 +457,7 @@ class Assanka_Webchat {
 				$data = $result["messagedata"];
 
 				$response['success'] = true;
-				$response['message'] = '';
+				$response['response'] = '';
 
 				// Detect and queue system messages
 				$sysmsgs = $wpdb->get_results("SELECT keyword as k, message as v FROM ".$wpdb->prefix."webchat_systemmessages WHERE brand='".$this->current_webchat_brand->slug."'", OBJECT_K);
@@ -488,7 +504,7 @@ class Assanka_Webchat {
 
 				$this->sendToParticipantsViaPusher('block', array('msgblocked'=>$_POST['id'], 'blockedby'=>$current_user->initials));
 				$response['success'] = true;
-				$response['message'] = '';
+				$response['response'] = '';
 				break;
 
 			case 'end':
@@ -544,7 +560,7 @@ class Assanka_Webchat {
 				}
 
 				$response['success']  = true;
-				$response ['message'] = $data;
+				$response ['response'] = $data;
 
 				// Send an end-session event
 				$this->sendToParticipantsViaPusher('end', $data);
@@ -568,7 +584,7 @@ class Assanka_Webchat {
 				update_post_meta(get_the_ID(), 'webchat_use_comingsoon', false);
 
 				$response['success'] = true;
-				$response['message'] = '';
+				$response['response'] = '';
 				/*$response = array(
 					'status' => 'success',
 				);*/
@@ -1950,7 +1966,7 @@ class Assanka_Webchat {
 		if (!current_user_can('edit_user', $user_id) or !wp_verify_nonce( $_POST['nonce'], plugin_basename( __FILE__ ))) return;
 
 		if (!empty($_POST['webchat_initials'])) {
-			update_usermeta($user_id, 'webchat_initials', trim($_POST['webchat_initials']));
+			update_user_meta($user_id, 'webchat_initials', trim($_POST['webchat_initials']));
 		}
 	}
 
