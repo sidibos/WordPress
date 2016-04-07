@@ -254,14 +254,16 @@ class Assanka_Webchat {
 				$response = array_merge($response, $priv);
 				$response = array_merge($response, $this->current_webchat_brand->getJavascriptConfig());
 
-				$response['response'] = $response;
-				$response['success']  = true;
+				$data_res = [];
+				$data_res['success'] = true;
+				$data_res['response'] = $response;
+				//re-initialise the response
+				$response = $data_res;
 
 				break;
 			case 'gettime':
 				Cacheability::noCache();
-				$response = time();
-				$response['response'] = $response;
+				$response['response'] = time();
 				$response['success']  = true;
 				break;
 
@@ -270,8 +272,12 @@ class Assanka_Webchat {
 				$response = array();
 				$response['isparticipant'] = (!!current_user_can(self::PARTICIPANT_CAPABILITY));
 				$response['channel'] = $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY));
-				$response['response'] = $response;
-				$response['success']  = true;
+
+				$data_res            = [];
+				$data_res['response'] = $response;
+				$data_res['success']  = true;
+				//re-initialise the response
+				$response  = $data_res;
 
 				break;
 
@@ -286,8 +292,12 @@ class Assanka_Webchat {
 					$status = 'inprogress';
 				}
 				$response['status'] = $status;
-				$response['response'] = $response;
-				$response['success']  = true;
+
+				$data_res = [];
+				$data_res['response'] = $response;
+				$data_res['success']  = true;
+				//re-initialise the response
+				$response             = $data_res;
 				break;
 
 			case 'getconfig':
@@ -315,9 +325,13 @@ class Assanka_Webchat {
 							$item['data'] = json_decode($item['data']);
 							return $item;
 						},$response);
-						$response['response'] = $response;
-						$response['success']  = true;
-						
+
+						$data_res = [];
+						$data_res['response'] = $response;
+						$data_res['success']  = true;
+						//re-initialise the response
+						$response = $data_res;
+
 					}
 
 				}
@@ -340,8 +354,11 @@ class Assanka_Webchat {
 						return $item;
 					}, $data_res);
 
-					$response['response'] = $response;
-					$response['success']  = true;
+					$data_res = [];
+					$data_res['response'] = $response;
+					$data_res['success']  = true;
+					//re-initialise the response
+					$response = $data_res;
 
 				} else {
 					$response = $this->get_html();
