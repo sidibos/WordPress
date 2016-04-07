@@ -464,10 +464,11 @@ class Assanka_Webchat {
 				}
 
 				// @TODO:WV:20121130:System messages should be retrospectively addable via editing messages
-				$result = $this->processSubmittedMessage($_POST, $logger, $logdata);
+				$result = $this->processSubmittedMessage($_REQUEST, $logger, $logdata);
 				if ($result["result"] == "error") {
 					$response['success'] = false;
 					$response['reason'] = $result["message"];
+					$response['request_data'] = $logdata;
 					break;
 				}
 				$msg = $result["messagetext"];
