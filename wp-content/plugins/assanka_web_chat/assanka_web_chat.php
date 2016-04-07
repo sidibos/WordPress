@@ -239,14 +239,14 @@ class Assanka_Webchat {
 				$response = array();
 				//merge getmeta
 				$response['channel'] = $this->getPusherChannel();
-				/*if ($this->currentPostIsClosed()) {
+				if ($this->currentPostIsClosed()) {
 					$status = 'closed';
 				} elseif ($this->currentPostIsComingSoon()) {
 					$status = 'comingsoon';
 				} else {
 					$status = 'inprogress';
 				}
-				$response['status'] = $status;*/
+				$response['status'] = $status;
 
 				$response = array_merge($response, ['time'=>time()]);
 				$priv = [
