@@ -322,6 +322,9 @@ class Assanka_Webchat {
 						$response[$k]['data'] = json_decode($row['data']);
 						$response[$k]['data'] = json_decode($row['data']);
 					}*/
+					array_walk($response, function($row,$key){
+						$row['data'] = json_decode($row['data']);
+					});
 
 				} else {
 					$response = $this->get_html();
