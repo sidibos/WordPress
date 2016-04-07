@@ -906,7 +906,7 @@ class Assanka_Webchat {
 		if (!empty($data['pubdate'])) {
 			$basequery .= $wpdb->prepare(', dateposted_gmt=%s', $data['pubdate']->format('Y-m-d H:i:s'));
 		}
-		if (empty($data['id'])) {
+		if (empty($data['id']) || $data['id'] == 0) {
 			$fullquery = 'INSERT INTO '.$basequery;
 		} else {
 			$fullquery = 'UPDATE '.$basequery.$wpdb->prepare(' WHERE id = %d', $data['id']);
@@ -2476,7 +2476,7 @@ class Assanka_Webchat {
 	private function rewrite_sql_to_pgsql($sql)
 	{
 		if(defined('DB_DRIVER') && DB_DRIVER == 'pgsql') {
-			$sql = pg4wp_rewrite( $sql);
+			$sql = pg4wp_rewrite($sql);
 		}
 
 		return $sql;
