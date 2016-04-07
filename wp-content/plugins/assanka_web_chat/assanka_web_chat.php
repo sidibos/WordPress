@@ -298,8 +298,8 @@ class Assanka_Webchat {
 					$channels = explode(',', $_REQUEST['channels']);
 					$channels = array_map('addslashes', $channels);
 					if(!empty($channels)) {
-						$channels = join('","', $channels);
-						$qry = 'SELECT channel, event, data FROM '.$wpdb->prefix.'webchat_pusher WHERE channel IN ("'.$channels.'") AND datepushed_gmt > "'.$twominutesago->format('Y-m-d H:i:s');
+						$channels = join("','", $channels);
+						$qry = "SELECT channel, event, data FROM ".$wpdb->prefix."webchat_pusher WHERE channel IN ('".$channels."') AND datepushed_gmt > '".$twominutesago->format('Y-m-d H:i:s')."'";
 						$qry = $this->rewrite_sql_to_pgsql($qry);
 						$response = $wpdb->get_results($qry, ARRAY_A);
 						$response = array_map(function($item){
