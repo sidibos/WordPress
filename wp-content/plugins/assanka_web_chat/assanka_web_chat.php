@@ -732,7 +732,7 @@ class Assanka_Webchat {
 		if (!(strlen($msg) > 0 and strlen($msg) <= 4125)) {
 			return array(
 				"result"  => "error",
-				"message" => "Invalid message - too long or too short (valid range 0-4000 chars)",
+				"message" => "Invalid message - too long or too short (valid range 0-4000 chars) orign_msg:".$msg,
 			);
 		}
 
