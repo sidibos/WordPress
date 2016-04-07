@@ -218,8 +218,6 @@ class Assanka_Webchat {
 	private function handle_ajax_requests() {
 		global $wpdb, $post;
 
-		$start_time = time();
-
 		if (!isset($this->possible_ajax_calls[$_REQUEST['action']])) {
 			return;
 		}
@@ -344,13 +342,15 @@ class Assanka_Webchat {
 				if (empty($messageid)) {
 					$logdata['validationerror'] = 'No message ID provided';
 					$this->logger->info('', $logdata);
-					$response = 'No message ID provided';
+					$response['success'] = false;
+					$response['reason'] = 'No message ID provided';
 					break;
 				}
 
 				$msg = $this->loadMessageByID($messageid);
 				if (empty($msg)) {
-					$response = 'Submitted message ID not found';
+					$response['success'] = false;
+					$response['reason'] = 'Submitted message ID not found';
 					break;
 				}
 
@@ -359,7 +359,8 @@ class Assanka_Webchat {
 					'messageid' => $msg->id
 				));
 
-				$response = true;
+				$response['success'] = true;
+				$response['message'] = '';
 				break;
 
 			case 'editmsg':
@@ -386,13 +387,15 @@ class Assanka_Webchat {
 				}
 
 				if (!empty($missing_fields)) {
-					$response = 'The following input fields were not provided: {\''.join('\', \'', $missing_fields).'\'}';
+					$response['success'] = false;
+					$response['reason'] = 'The following input fields were not provided: {\''.join('\', \'', $missing_fields).'\'}';
 					break;
 				}
 
 				$msg = $this->loadMessageByID($submitted_data['messageid']);
 				if (empty($msg)) {
-					$response = 'Submitted message ID not found';
+					$response['success'] = false;
+					$response['reason'] = 'Submitted message ID not found';
 					break;
 				}
 
@@ -404,11 +407,13 @@ class Assanka_Webchat {
 
 				$result = $this->processSubmittedMessage($postdata, $logger, $logdata, $msg);
 				if ($result["result"] == "error") {
-					$response = $result["message"];
+					$response['success'] = false;
+					$response['reason'] = $result["message"];
 					break;
 				}
 
-				$response = $result["formattedmessage"];
+				$response['success'] = true;
+				$response['message'] = $result["formattedmessage"];
 
 				break;
 
@@ -417,21 +422,26 @@ class Assanka_Webchat {
 				$logdata['event'] = 'start';
 				$logdata['msg'] = substr($logdata['msg'], 0, 50);
 				$this->logger->info('', $logdata);
+				$message = '';
 
 				if ($this->currentPostIsClosed()) {
-					$response = "The chat has finished.  No more messages can be posted.";
+					$response['success'] = true;
+					$response['message'] = "The chat has finished.  No more messages can be posted.";
 					break;
 				}
 
 				// @TODO:WV:20121130:System messages should be retrospectively addable via editing messages
 				$result = $this->processSubmittedMessage($_POST, $logger, $logdata);
 				if ($result["result"] == "error") {
-					$response = $result["message"];
+					$response['success'] = false;
+					$response['reason'] = $result["message"];
 					break;
 				}
 				$msg = $result["messagetext"];
 				$data = $result["messagedata"];
-				$response = true;
+
+				$response['success'] = true;
+				$response['message'] = '';
 
 				// Detect and queue system messages
 				$sysmsgs = $wpdb->get_results("SELECT keyword as k, message as v FROM ".$wpdb->prefix."webchat_systemmessages WHERE brand='".$this->current_webchat_brand->slug."'", OBJECT_K);
@@ -477,7 +487,8 @@ class Assanka_Webchat {
 				$wpdb->query($wpdb->prepare('UPDATE '.$wpdb->prefix.'webchat_messages SET blockedby_user_id=%d WHERE id=%d AND post_id=%d', $current_user->ID, $_POST['id'], get_the_ID()));
 
 				$this->sendToParticipantsViaPusher('block', array('msgblocked'=>$_POST['id'], 'blockedby'=>$current_user->initials));
-				$response = 'OK';
+				$response['success'] = true;
+				$response['message'] = '';
 				break;
 
 			case 'end':
@@ -532,7 +543,8 @@ class Assanka_Webchat {
 					);
 				}
 
-				$response = $data;
+				$response['success']  = true;
+				$response ['message'] = $data;
 
 				// Send an end-session event
 				$this->sendToParticipantsViaPusher('end', $data);
@@ -545,17 +557,21 @@ class Assanka_Webchat {
 
 				// Check that the session hasn't already started:
 				if (!$this->currentPostIsComingSoon()) {
-					$response = array(
+					$response['success'] = false;
+					$response['reason']  = 'Session already started';
+					/*$response = array(
 						'status' => 'error_already_started',
-					);
+					);*/
 					break;
 				}
 
 				update_post_meta(get_the_ID(), 'webchat_use_comingsoon', false);
 
-				$response = array(
+				$response['success'] = true;
+				$response['message'] = '';
+				/*$response = array(
 					'status' => 'success',
-				);
+				);*/
 
 				// Send an start-session event
 				$this->sendToEveryoneViaPusher('startSession', null);
