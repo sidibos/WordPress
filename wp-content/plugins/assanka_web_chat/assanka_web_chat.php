@@ -319,8 +319,8 @@ class Assanka_Webchat {
 					$response = $wpdb->get_results($query, ARRAY_A);
 
 					foreach ($response as $k=>&$row) {
-						$row['data'] = json_decode($row['data']);
-						$row['data'] = json_decode($row['data']);
+						$row->data = json_decode($row->data);
+						$row->data = json_decode($row->data);
 					}
 
 
