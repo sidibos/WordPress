@@ -299,6 +299,7 @@ class Assanka_Webchat {
 					if(!empty($channels)) {
 						$channels = join('","', $channels);
 						$qry = 'SELECT channel, event, data FROM '.$wpdb->prefix.'webchat_pusher WHERE channel IN ("'.$channels.'") AND datepushed_gmt > "'.$twominutesago->format('Y-m-d H:i:s');
+						$qry = $this->rewrite_sql_to_pgsql($qry);
 						$response = $wpdb->get_results($qry, ARRAY_A);
 						foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
 					}
