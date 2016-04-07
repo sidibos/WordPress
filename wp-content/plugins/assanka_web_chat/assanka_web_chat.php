@@ -909,9 +909,10 @@ class Assanka_Webchat {
 		if (empty($data['id']) || intval($data['id']) == 0) {
 			//$fullquery = 'INSERT INTO '.$basequery;
 			$pubdate = (strlen($data['pubdate']->format('Y-m-d H:i:s')))?$data['pubdate']->format('Y-m-d H:i:s'):NULL;
-
+			$key_text = wp_strip_all_tags($data['keytext']);
+			$key_text = (strlen($key_text))?$key_text:NULL;
 			$fullquery = "INSERT INTO ".$wpdb->prefix."webchat_messages (user_id, post_id, msgtype, msgtext, keyevent, datemodified_gmt, dateposted_gmt)".
-					" values(".$data['user_id'].",".$data['post_id'].",'".$data['msgtype']."','".$data['msgtext']."','".wp_strip_all_tags($data['keytext'])."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$pubdate."')";
+					" VALUES (".$data['user_id'].",".$data['post_id'].",'".$data['msgtype']."','".$data['msgtext']."','".$key_text."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$pubdate."')";
 		} else {
 			$basequery = $wpdb->prepare($wpdb->prefix . 'webchat_messages SET user_id=%d, post_id=%d, msgtype=%s, msgtext=%s, keyevent=%s, datemodified_gmt=%s', $data['user_id'], $data['post_id'], $data['msgtype'], $data['msgtext'], wp_strip_all_tags($data['keytext']), $data['datemodified']->format('Y-m-d H:i:s'));
 
