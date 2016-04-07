@@ -229,7 +229,7 @@ class Assanka_Webchat {
 			exit ("Permission denied.");
 		}
 
-		$logdata = array_merge($_GET, $_POST);
+		$logdata = array_merge($_GET, $_POST, $_REQUEST);
 
 		switch($_REQUEST['action']) {
 			case 'init':
@@ -464,13 +464,10 @@ class Assanka_Webchat {
 				}
 
 				// @TODO:WV:20121130:System messages should be retrospectively addable via editing messages
-				$result = $this->processSubmittedMessage($_POST, $logger, $logdata);
+				$result = $this->processSubmittedMessage($_REQUEST, $logger, $logdata);
 				if ($result["result"] == "error") {
 					$response['success'] = false;
 					$response['reason'] = $result["message"];
-					$response['request_data'] = $logdata;
-					$response['post_data']    = $_POST;
-					$response['origin_request'] = $_REQUEST;
 					break;
 				}
 				$msg = $result["messagetext"];
@@ -897,8 +894,8 @@ class Assanka_Webchat {
 
 	private function deleteMessageFromDB($id) {
 		global $wpdb;
-
-		$wpdb->query($wpdb->prepare('DELETE FROM '.$wpdb->prefix . 'webchat_messages WHERE id = %d', $id));
+		$del_query = $this->rewrite_sql_to_pgsql($wpdb->prepare('DELETE FROM '.$wpdb->prefix . 'webchat_messages WHERE id = %d', $id));
+		$wpdb->query($del_query);
 	}
 
 	private function getUpdateMessageQuery($data) {
@@ -913,6 +910,7 @@ class Assanka_Webchat {
 		} else {
 			$fullquery = 'UPDATE '.$basequery.$wpdb->prepare(' WHERE id = %d', $data['id']);
 		}
+		$fullquery = $this->rewrite_sql_to_pgsql($fullquery);
 		return $fullquery;
 	}
 
