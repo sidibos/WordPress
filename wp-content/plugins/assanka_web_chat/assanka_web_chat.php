@@ -318,13 +318,17 @@ class Assanka_Webchat {
 					$query = $this->rewrite_sql_to_pgsql($query);
 					$response = $wpdb->get_results($query, ARRAY_A);
 
-					$data_response = [];
+					/*$data_response = [];
 					foreach ($response as $k=>$row) {
 						$response[$k]['data'] = json_decode($row['data']);
 						$response[$k]['data'] = json_decode($row['data']);
 						$data_response[] = $response[$k];
 					}
-					$response = $data_response;
+					$response = $data_response;*/
+					foreach($response as $k => &$row){
+						$row['data'] = json_decode($row['data']);
+						$row['data'] = json_decode($row['data']);
+					}
 
 				} else {
 					$response = $this->get_html();
