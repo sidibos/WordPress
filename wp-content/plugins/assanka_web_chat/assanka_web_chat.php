@@ -322,7 +322,7 @@ class Assanka_Webchat {
 						$response[$k]['data'] = json_decode($row['data']);
 						$response[$k]['data'] = json_decode($row['data']);
 					}*/
-					array_map($response, function($row){
+					$response = array_map($response, function($row){
 						$row['data'] = json_decode($row['data']);
 						return $row;
 					});
