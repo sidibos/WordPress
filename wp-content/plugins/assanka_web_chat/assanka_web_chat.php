@@ -913,7 +913,7 @@ class Assanka_Webchat {
 		if (empty($data['id']) || $data['id'] == 0) {
 			//$fullquery = 'INSERT INTO '.$basequery;
 			$fullquery = "INSERT INTO ".$wpdb->prefix."webchat_messages (user_id, post_id, msgtype, msgtext, keyevent, datemodified_gmt, dateposted_gmt)".
-					" values(".$data['user_id'].",".$data['post_id'].",'".data['msgtype']."','".$data['msgtext']."','".wp_strip_all_tags($data['keytext'])."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$data['pubdate']->format('Y-m-d H:i:s')."')";
+					" values(".$data['user_id'].",".$data['post_id'].",'".$data['msgtype']."','".$data['msgtext']."','".wp_strip_all_tags($data['keytext'])."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$data['pubdate']->format('Y-m-d H:i:s')."')";
 		} else {
 			$fullquery = 'UPDATE '.$basequery.$wpdb->prepare(' WHERE id = %d', $data['id']);
 		}
