@@ -296,7 +296,7 @@ class Assanka_Webchat {
 				if (!empty($_REQUEST['channels'])) {
 					$twominutesago = new DateTime('2 minutes ago', new DateTimeZone('UTC'));
 					$channels = explode(',', $_REQUEST['channels']);
-					$channels = array_map('addslashes', $channels);
+					//$channels = array_map('addslashes', $channels); //commented out for now
 					if(!empty($channels)) {
 						$channels = join("','", $channels);
 						$qry = "SELECT channel, event, data FROM ".$wpdb->prefix."webchat_pusher WHERE channel IN ('".$channels."') AND datepushed_gmt > '".$twominutesago->format('Y-m-d H:i:s')."'";
@@ -307,7 +307,6 @@ class Assanka_Webchat {
 							return $item;
 						},$response);
 						//foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
-						$response['poll_query'] = $qry;
 					}
 
 				}
