@@ -302,7 +302,12 @@ class Assanka_Webchat {
 						$qry = 'SELECT channel, event, data FROM '.$wpdb->prefix.'webchat_pusher WHERE channel IN ("'.$channels.'") AND datepushed_gmt > "'.$twominutesago->format('Y-m-d H:i:s');
 						$qry = $this->rewrite_sql_to_pgsql($qry);
 						$response = $wpdb->get_results($qry, ARRAY_A);
-						foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
+						$response = array_map(function($item){
+							$item['data'] = json_decode($item['data']);
+							return $item;
+						},$response);
+						//foreach ($response as $k=>$row) $response[$k]['data'] = json_decode($row['data']);
+						$response['poll_query'] = $qry;
 					}
 
 				}
@@ -444,7 +449,8 @@ class Assanka_Webchat {
 				}
 
 				// If a symbol has been mentioned, fetch the quote
-				if (preg_match("/\b".self::RGX_MARKETSQUOTE."\b/", $msg, $m)) {
+				//commenting this out for no
+				/*if (preg_match("/\b".self::RGX_MARKETSQUOTE."\b/", $msg, $m)) {
 					$symb = $m[1];
 					$op = shell_exec("curl -sL \"http://markets.ft.com/apis/mobile/quote.asp?symbol=".strtoupper($symb)."\" -m 5");
 					$xml = simplexml_load_string($op, 'SimpleXMLElement', LIBXML_NOCDATA);
@@ -461,7 +467,7 @@ class Assanka_Webchat {
 							$response = "Error sending pricing quote to Pusher: ".$response["pusherresult"];
 						}
 					}
-				}
+				}*/
 
 				break;
 
