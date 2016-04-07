@@ -906,18 +906,21 @@ class Assanka_Webchat {
 	private function getUpdateMessageQuery($data) {
 		global $wpdb;
 
-		$basequery = $wpdb->prepare($wpdb->prefix . 'webchat_messages SET user_id=%d, post_id=%d, msgtype=%s, msgtext=%s, keyevent=%s, datemodified_gmt=%s', $data['user_id'], $data['post_id'], $data['msgtype'], $data['msgtext'], wp_strip_all_tags($data['keytext']), $data['datemodified']->format('Y-m-d H:i:s'));
-		if (!empty($data['pubdate'])) {
-			$basequery .= $wpdb->prepare(', dateposted_gmt=%s', $data['pubdate']->format('Y-m-d H:i:s'));
-		}
-		if (empty($data['id']) || $data['id'] == 0) {
+		if (empty($data['id']) || intval($data['id']) == 0) {
 			//$fullquery = 'INSERT INTO '.$basequery;
+			$pubdate = (strlen($data['pubdate']->format('Y-m-d H:i:s')))?$data['pubdate']->format('Y-m-d H:i:s'):NULL;
+
 			$fullquery = "INSERT INTO ".$wpdb->prefix."webchat_messages (user_id, post_id, msgtype, msgtext, keyevent, datemodified_gmt, dateposted_gmt)".
-					" values(".$data['user_id'].",".$data['post_id'].",'".$data['msgtype']."','".$data['msgtext']."','".wp_strip_all_tags($data['keytext'])."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$data['pubdate']->format('Y-m-d H:i:s')."')";
+					" values(".$data['user_id'].",".$data['post_id'].",'".$data['msgtype']."','".$data['msgtext']."','".wp_strip_all_tags($data['keytext'])."','".$data['datemodified']->format('Y-m-d H:i:s')."','".$pubdate."')";
 		} else {
+			$basequery = $wpdb->prepare($wpdb->prefix . 'webchat_messages SET user_id=%d, post_id=%d, msgtype=%s, msgtext=%s, keyevent=%s, datemodified_gmt=%s', $data['user_id'], $data['post_id'], $data['msgtype'], $data['msgtext'], wp_strip_all_tags($data['keytext']), $data['datemodified']->format('Y-m-d H:i:s'));
+
+			if (!empty($data['pubdate'])) {
+				$basequery .= $wpdb->prepare(', dateposted_gmt=%s', $data['pubdate']->format('Y-m-d H:i:s'));
+			}
 			$fullquery = 'UPDATE '.$basequery.$wpdb->prepare(' WHERE id = %d', $data['id']);
 		}
-		//$fullquery = $this->rewrite_sql_to_pgsql($fullquery);
+		$fullquery = $this->rewrite_sql_to_pgsql($fullquery);
 		return $fullquery;
 	}
 
