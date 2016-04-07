@@ -474,7 +474,7 @@ class Assanka_Webchat {
 				$data = $result["messagedata"];
 
 				$response['success'] = true;
-				$response['data']    = '';
+				$response['data']    = $result;
 
 				// Detect and queue system messages
 				$sysmsgs = $wpdb->get_results("SELECT keyword as k, message as v FROM ".$wpdb->prefix."webchat_systemmessages WHERE brand='".$this->current_webchat_brand->slug."'", OBJECT_K);
@@ -800,6 +800,7 @@ class Assanka_Webchat {
 			"messagetext"      => $msg,
 			"keytext"		   => $keytext,
 			"messagedata"      => $data,
+			"update_query" => $this->updateMessageInDB($data)
 		);
 	}
 
