@@ -803,7 +803,8 @@ class Assanka_Webchat {
 			"messagetext"      => $msg,
 			"keytext"		   => $keytext,
 			"messagedata"      => $data,
-			"update_query"     => $this->updateMessageInDB($data)
+			"update_query"     => $this->updateMessageInDB($data),
+			"query_response" => $response
 		);
 	}
 
