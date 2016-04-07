@@ -254,16 +254,16 @@ class Assanka_Webchat {
 				$response = array_merge($response, $priv);
 				$response = array_merge($response, $this->current_webchat_brand->getJavascriptConfig());
 
-				$data_res = [];
+				$data_res            = [];
 				$data_res['success'] = true;
-				$data_res['response'] = $response;
+				$data_res['data']    = $response;
 				//re-initialise the response
 				$response = $data_res;
 
 				break;
 			case 'gettime':
 				Cacheability::noCache();
-				$response['response'] = time();
+				$response['data']     = time();
 				$response['success']  = true;
 				break;
 
@@ -273,8 +273,8 @@ class Assanka_Webchat {
 				$response['isparticipant'] = (!!current_user_can(self::PARTICIPANT_CAPABILITY));
 				$response['channel'] = $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY));
 
-				$data_res            = [];
-				$data_res['response'] = $response;
+				$data_res             = [];
+				$data_res['data']     = $response;
 				$data_res['success']  = true;
 				//re-initialise the response
 				$response  = $data_res;
@@ -293,8 +293,8 @@ class Assanka_Webchat {
 				}
 				$response['status'] = $status;
 
-				$data_res = [];
-				$data_res['response'] = $response;
+				$data_res             = [];
+				$data_res['data']     = $response;
 				$data_res['success']  = true;
 				//re-initialise the response
 				$response             = $data_res;
@@ -302,7 +302,7 @@ class Assanka_Webchat {
 
 			case 'getconfig':
 				Cacheability::noCache();
-				$response['response'] = $this->current_webchat_brand->getJavascriptConfig();
+				$response['data']     = $this->current_webchat_brand->getJavascriptConfig();
 				$response['success']  = true;
 				break;
 
@@ -326,8 +326,8 @@ class Assanka_Webchat {
 							return $item;
 						},$response);
 
-						$data_res = [];
-						$data_res['response'] = $response;
+						$data_res             = [];
+						$data_res['data']     = $response;
 						$data_res['success']  = true;
 						//re-initialise the response
 						$response = $data_res;
@@ -354,8 +354,8 @@ class Assanka_Webchat {
 						return $item;
 					}, $data_res);
 
-					$data_res = [];
-					$data_res['response'] = $response;
+					$data_res             = [];
+					$data_res['data']     = $response;
 					$data_res['success']  = true;
 					//re-initialise the response
 					$response = $data_res;
@@ -393,7 +393,7 @@ class Assanka_Webchat {
 				));
 
 				$response['success'] = true;
-				$response['response'] = '';
+				$response['data']    = '';
 				break;
 
 			case 'editmsg':
@@ -446,7 +446,7 @@ class Assanka_Webchat {
 				}
 
 				$response['success'] = true;
-				$response['response'] = $result["formattedmessage"];
+				$response['data']    = $result["formattedmessage"];
 
 				break;
 
@@ -459,7 +459,7 @@ class Assanka_Webchat {
 
 				if ($this->currentPostIsClosed()) {
 					$response['success'] = true;
-					$response['response'] = "The chat has finished.  No more messages can be posted.";
+					$response['data']    = "The chat has finished.  No more messages can be posted.";
 					break;
 				}
 
@@ -474,7 +474,7 @@ class Assanka_Webchat {
 				$data = $result["messagedata"];
 
 				$response['success'] = true;
-				$response['response'] = '';
+				$response['data']    = '';
 
 				// Detect and queue system messages
 				$sysmsgs = $wpdb->get_results("SELECT keyword as k, message as v FROM ".$wpdb->prefix."webchat_systemmessages WHERE brand='".$this->current_webchat_brand->slug."'", OBJECT_K);
@@ -521,7 +521,7 @@ class Assanka_Webchat {
 
 				$this->sendToParticipantsViaPusher('block', array('msgblocked'=>$_POST['id'], 'blockedby'=>$current_user->initials));
 				$response['success'] = true;
-				$response['response'] = '';
+				$response['data']    = '';
 				break;
 
 			case 'end':
@@ -577,7 +577,7 @@ class Assanka_Webchat {
 				}
 
 				$response['success']  = true;
-				$response ['response'] = $data;
+				$response ['data']    = $data;
 
 				// Send an end-session event
 				$this->sendToParticipantsViaPusher('end', $data);
@@ -601,7 +601,7 @@ class Assanka_Webchat {
 				update_post_meta(get_the_ID(), 'webchat_use_comingsoon', false);
 
 				$response['success'] = true;
-				$response['response'] = '';
+				$response['data']    = '';
 				/*$response = array(
 					'status' => 'success',
 				);*/
