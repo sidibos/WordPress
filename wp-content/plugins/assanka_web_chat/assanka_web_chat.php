@@ -911,7 +911,7 @@ class Assanka_Webchat {
 		} else {
 			$fullquery = 'UPDATE '.$basequery.$wpdb->prepare(' WHERE id = %d', $data['id']);
 		}
-		$fullquery = $this->rewrite_sql_to_pgsql($fullquery);
+		//$fullquery = $this->rewrite_sql_to_pgsql($fullquery);
 		return $fullquery;
 	}
 
