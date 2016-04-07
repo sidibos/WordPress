@@ -785,10 +785,8 @@ class Assanka_Webchat {
 
 			if (empty($existingmessage)) {
 				$response = $this->insertMessage($data);
-				$response['query_type'] = 'insert';
 			} else {
 				$response = $this->updateExistingMessage($data);
-				$response['query_type'] = 'update';
 			}
 			if ($response["pusherresult"] !== true) {
 				return array(
@@ -840,6 +838,8 @@ class Assanka_Webchat {
 		return array(
 			"pusherresult"     => $pusherresult,
 			"formattedmessage" => $data['html'],
+			"inst_id" 		   => $data['id'],
+			"ins_query"        => $this->getUpdateMessageQuery($data)
 		);
 	}
 
