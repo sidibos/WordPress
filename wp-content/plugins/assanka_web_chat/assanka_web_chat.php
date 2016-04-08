@@ -838,7 +838,7 @@ class Assanka_Webchat {
 		$now = new DateTime('Now', new DateTimeZone('UTC'));
 		$event = 'msg';
 		$channel = $this->getPusherChannel();
-		$json_data = json_encode($data);
+		$json_data = json_encode($data, JSON_UNESCAPED_SLASHES);
 		$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
 				" VALUES ('".$channel."','".$event."','".$json_data."','".$now->format('Y-m-d H:i:s')."')";
 
