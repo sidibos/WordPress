@@ -840,7 +840,7 @@ class Assanka_Webchat {
 		$channel = $this->getPusherChannel();
 		$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
 				" VALUES ('".$channel."','".$event."','".json_encode($data,JSON_FORCE_OBJECT)."','".$now->format('Y-m-d H:i:s')."')";
-		$ins_q = strip_slashes($ins_q);
+		$ins_q = stripslashes($ins_q);
 		$ins_q = str_replace("'", "''",$ins_q);
 
 
