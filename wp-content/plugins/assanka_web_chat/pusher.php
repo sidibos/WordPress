@@ -25,6 +25,8 @@ Contributors:
 	+ Phil Leggetter (phil@leggetter.co.uk)
 */
 
+namespace AV2;
+
 class PusherException extends Exception {}
 
 class PusherInstance {

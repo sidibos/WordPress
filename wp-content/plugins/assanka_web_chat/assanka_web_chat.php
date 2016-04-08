@@ -13,6 +13,8 @@ require_once $_SERVER['COREFTCO'].'/helpers/cacheability/cacheability';
 require_once dirname(__FILE__).'/assanka_web_chat_emoticon.php';
 require_once dirname(__FILE__).'/pusher.php';
 
+use AV2\Pusher AS Pusher;
+
 class Assanka_Webchat {
 	public  $current_webchat_brand = false;
 
@@ -801,6 +803,7 @@ class Assanka_Webchat {
 			"messagetext"      => $msg,
 			"keytext"		   => $keytext,
 			"messagedata"      => $data,
+			"pusher_response"  => $response, //TODO remove this after testing
 		);
 	}
 
@@ -833,9 +836,18 @@ class Assanka_Webchat {
 			));
 		}
 
+		$now = new DateTime('Now', new DateTimeZone('UTC'));
+		$event = 'msg';
+		$channel = $this->getPusherChannel();
+		$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
+				" VALUES ('".$channel."','".$event."','".json_encode($data)."','".$now->format('Y-m-d H:i:s')."')";
+
+
 		return array(
 			"pusherresult"     => $pusherresult,
 			"formattedmessage" => $data['html'],
+			"msg_id"		   => $data['id'],
+			"event_query"      => 	$ins_q,
 		);
 	}
 
@@ -1085,7 +1097,10 @@ class Assanka_Webchat {
 		// Also add the message to the database to enable fallback for UAs that cannot connect to pusher
 		if ($resp === true) {
 			$now = new DateTime('Now', new DateTimeZone('UTC'));
-			$wpdb->query($wpdb->prepare('INSERT INTO '.$wpdb->prefix.'webchat_pusher SET channel=%s, event=%s, data=%s, datepushed_gmt=%s', $channel, $event, json_encode($data), $now->format('Y-m-d H:i:s')));
+			//$wpdb->query($wpdb->prepare('INSERT INTO '.$wpdb->prefix.'webchat_pusher SET channel=%s, event=%s, data=%s, datepushed_gmt=%s', $channel, $event, json_encode($data), $now->format('Y-m-d H:i:s')));
+			$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
+					" VALUES ('".$channel."','".$event."','".json_encode($data)."','".$now->format('Y-m-d H:i:s')."')";
+			$wpdb->query($ins_q);
 		}
 
         $pusherDuration = $pusherEnd - $pusherStart;
