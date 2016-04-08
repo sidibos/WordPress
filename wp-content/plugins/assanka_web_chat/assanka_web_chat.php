@@ -360,6 +360,7 @@ class Assanka_Webchat {
 					$data_res['success']  = true;
 					//re-initialise the response
 					$response = $data_res;
+					$response['query'] = $query;
 
 				} else {
 					$response = $this->get_html();
@@ -835,7 +836,7 @@ class Assanka_Webchat {
 			));
 		}
 
-		$now = new DateTime('Now', new DateTimeZone('UTC'));
+		/*$now = new DateTime('Now', new DateTimeZone('UTC'));
 		$event = 'msg';
 		$channel = $this->getPusherChannel();
 		$json_data = json_encode($data);
@@ -844,6 +845,7 @@ class Assanka_Webchat {
 
 		$ins_q = str_replace("\\", "",$ins_q);
 		$ins_q = pg4wp_rewrite($ins_q);
+		*/
 
 
 
@@ -851,8 +853,6 @@ class Assanka_Webchat {
 			"pusherresult"     => $pusherresult,
 			"formattedmessage" => $data['html'],
 			"msg_id"		   => $data['id'],
-			"event_query"      => 	$ins_q,
-			"json_data"        => $json_data,
 		);
 	}
 
