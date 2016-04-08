@@ -840,6 +840,7 @@ class Assanka_Webchat {
 		$channel = $this->getPusherChannel();
 		$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
 				" VALUES ('".$channel."','".$event."','".json_encode($data)."','".$now->format('Y-m-d H:i:s')."')";
+		$ins_q = $this->rewrite_sql_to_pgsql($ins_q);
 
 
 		return array(
@@ -1099,6 +1100,7 @@ class Assanka_Webchat {
 			//$wpdb->query($wpdb->prepare('INSERT INTO '.$wpdb->prefix.'webchat_pusher SET channel=%s, event=%s, data=%s, datepushed_gmt=%s', $channel, $event, json_encode($data), $now->format('Y-m-d H:i:s')));
 			$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
 					" VALUES ('".$channel."','".$event."','".json_encode($data)."','".$now->format('Y-m-d H:i:s')."')";
+			$ins_q = $this->rewrite_sql_to_pgsql($ins_q);
 			$wpdb->query($ins_q);
 		}
 
