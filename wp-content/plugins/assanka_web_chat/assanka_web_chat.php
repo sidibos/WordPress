@@ -843,7 +843,7 @@ class Assanka_Webchat {
 				" VALUES ('".$channel."','".$event."','".$json_data."','".$now->format('Y-m-d H:i:s')."')";
 
 		$ins_q = str_replace("\\", "",$ins_q);
-		$ins_q = htmlentities($ins_q);
+		$ins_q = pg4wp_rewrite($ins_q);
 
 
 
