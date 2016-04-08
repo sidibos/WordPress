@@ -13,7 +13,6 @@ require_once $_SERVER['COREFTCO'].'/helpers/cacheability/cacheability';
 require_once dirname(__FILE__).'/assanka_web_chat_emoticon.php';
 require_once dirname(__FILE__).'/pusher.php';
 
-use AV2\Pusher AS Pusher;
 
 class Assanka_Webchat {
 	public  $current_webchat_brand = false;
