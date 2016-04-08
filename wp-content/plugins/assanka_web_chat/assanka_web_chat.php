@@ -836,16 +836,7 @@ class Assanka_Webchat {
 			));
 		}
 
-		/*$now = new DateTime('Now', new DateTimeZone('UTC'));
-		$event = 'msg';
-		$channel = $this->getPusherChannel();
-		$json_data = json_encode($data);
-		$ins_q = "INSERT INTO ".$wpdb->prefix."webchat_pusher (channel, event, data, datepushed_gmt)".
-				" VALUES ('".$channel."','".$event."','".$json_data."','".$now->format('Y-m-d H:i:s')."')";
 
-		$ins_q = str_replace("\\", "",$ins_q);
-		$ins_q = pg4wp_rewrite($ins_q);
-		*/
 
 
 
@@ -1098,6 +1089,11 @@ class Assanka_Webchat {
 			$resp = $e->getMessage();
 		}
         $pusherEnd = microtime(true);
+
+		$data = array_map(function($item){
+			$item['data']['html'] = htmlentities($item['data']['html']);
+			return $item;
+		},$data);
 
 		// Also add the message to the database to enable fallback for UAs that cannot connect to pusher
 		if ($resp === true) {
