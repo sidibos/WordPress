@@ -250,6 +250,7 @@ class Assanka_Webchat {
 				$response = array_merge($response, ['time'=>time()]);
 				$priv = [
 				      'isparticipant' => (!!current_user_can(self::PARTICIPANT_CAPABILITY)),
+					  'iseditor'      => (!!current_user_can(self::EDITOR_CAPABILITY)),
 				      'channel'  => $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY))
 				      ];
 				$response = array_merge($response, $priv);
@@ -272,6 +273,7 @@ class Assanka_Webchat {
 				Cacheability::noCache();
 				$response = array();
 				$response['isparticipant'] = (!!current_user_can(self::PARTICIPANT_CAPABILITY));
+				$response['iseditor']      = (!!current_user_can(self::EDITOR_CAPABILITY));
 				$response['channel'] = $this->getPusherChannel(current_user_can(self::PARTICIPANT_CAPABILITY));
 
 				$data_res             = [];
@@ -1089,7 +1091,7 @@ class Assanka_Webchat {
 			$resp = $e->getMessage();
 		}
         $pusherEnd = microtime(true);
-		
+
 
 		// Also add the message to the database to enable fallback for UAs that cannot connect to pusher
 		if ($resp === true) {
