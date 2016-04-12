@@ -40,6 +40,7 @@ class Assanka_Webchat {
 		'end'            => array('requireseditor' => true),
 		'startSession'   => array('requireseditor' => true),
 	);
+	
 
 	const PARTICIPANT_CAPABILITY = 'edit_posts';
 	const EDITOR_CAPABILITY      = 'edit_published_posts';
